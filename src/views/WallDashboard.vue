@@ -5,9 +5,11 @@ import { useDashboard } from '../stores/dashboard'
 import { chinaTime, shortDate } from '../utils/date'
 import { deriveDashboard, overdueDays } from '../utils/dashboard'
 import { dailyQuote } from '../utils/quotes'
-import type { Group, Task } from '../types/dashboard'
+import { GROUP_CONFIG, groupLabel } from '../config/groups'
+import type { Task } from '../types/dashboard'
 import StatsCard from '../components/StatsCard.vue'
-import TaskLine from '../components/TaskLine.vue'
+import WallMemberCard from '../components/WallMemberCard.vue'
+import MemberCarousel from '../components/MemberCarousel.vue'
 import AutoScroll from '../components/AutoScroll.vue'
 import '../wall.css'
 
@@ -16,14 +18,9 @@ const board = ref<HTMLElement>()
 const scale = ref(1)
 const offset = ref({ x: 0, y: 0 })
 const view = computed(() => store.data ? deriveDashboard(store.data, '全部成员', store.now) : null)
-const groups: { name: Group; code: string }[] = [
-  { name: '机械组', code: 'MECHANICAL' },
-  { name: '电控组', code: 'ELECTRONIC CONTROL' },
-  { name: '视觉组', code: 'COMPUTER VISION' },
-  { name: '其他', code: 'OPERATIONS' },
-]
+const groups = GROUP_CONFIG
 const time = computed(() => chinaTime(store.now))
-const owners = (task: Task) => store.data?.members.filter(m => task.memberIds.includes(m.id)).map(m => `${m.name} · ${m.group}`).join(' / ')
+const owners = (task: Task) => store.data?.members.filter(m => task.memberIds.includes(m.id)).map(m => `${m.name} · ${groupLabel(m.group)}`).join(' / ')
 const remaining = (task: Task) => Math.max(1, Math.ceil((Date.parse(task.deadline!) - store.now) / 3600000))
 let clock: ReturnType<typeof setInterval>
 let poll: ReturnType<typeof setInterval>
@@ -80,7 +77,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="wall-header-status">
           <div class="wall-data-state" :class="{ 'red': store.error }">
-            <Radio :size="28" /><div><strong>{{ store.error ? '数据连接异常' : store.data?.source === 'mock' ? '演示任务 · 虚拟打卡' : store.data ? `飞书任务 · ${store.data.checkInSource === 'mock' ? '虚拟打卡' : '飞书打卡'}` : '正在连接数据' }}</strong><span>LAST SYNC {{ store.data ? chinaTime(store.data.syncedAt).format('HH:mm:ss') : '--:--:--' }} · 每 60 秒同步 · 任务自动滚动</span></div>
+            <Radio :size="28" /><div><strong>{{ store.error ? '数据连接异常' : store.data?.source === 'mock' ? '演示任务 · 虚拟打卡' : store.data ? `飞书任务 · ${store.data.checkInSource === 'mock' ? '虚拟打卡' : '飞书打卡'}` : '正在连接数据' }}</strong><span>LAST SYNC {{ store.data ? chinaTime(store.data.syncedAt).format('HH:mm:ss') : '--:--:--' }} · 每 60 秒同步 · 成员自动轮播</span></div>
           </div>
           <div class="wall-clock"><strong class="mono">{{ time.format('HH:mm:ss') }}</strong><span>{{ time.format('YYYY / MM / DD') }} · {{ ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'][time.day()] }} · 北京时间</span></div>
         </div>
@@ -100,33 +97,26 @@ onBeforeUnmount(() => {
           <div v-if="view" class="wall-lanes">
             <section v-for="group in groups" :key="group.name" class="wall-lane">
               <header class="wall-lane-title"><h3>{{ group.name }}<span>{{ group.code }}</span></h3><b class="mono">{{ String(view.members.filter(m => m.group === group.name).length).padStart(2, '0') }}</b></header>
-              <AutoScroll class="wall-lane-scroll" :label="`${group.name}成员自动滚动`" :speed="22">
-              <article v-for="member in view.members.filter(m => m.group === group.name)" :key="member.id" class="wall-member" :data-member-id="member.id">
-                <div class="wall-member-heading"><h3>{{ member.name }}</h3><span :class="member.checkedIn ? 'green' : 'orange'">{{ member.checkedIn ? '✓ 今日已打卡' : '● 今日未打卡' }}</span></div>
-                <div class="wall-member-metrics"><span>完成 <b>{{ member.completed.length }}</b><i>/</i>未完成 <b>{{ member.pending.length }}</b></span><strong class="mono">{{ member.completion === null ? '暂无任务' : `${member.completion}%` }}</strong></div>
-                <div class="wall-progress"><i :style="{width: `${member.completion ?? 0}%`}" /></div>
-                <div class="wall-member-tasks">
-                  <section><h4>当前任务 <span>{{ member.pending.length }}</span></h4><AutoScroll :label="`${member.name}当前任务自动滚动`" :speed="18"><TaskLine v-for="task in member.pending" :key="task.id" :task="task" /><p v-if="!member.pending.length" class="wall-no-task">{{ member.tasks.length ? '全部任务已完成' : '暂无任务' }}</p></AutoScroll></section>
-                  <section class="wall-completed"><h4>已完成 <span>{{ member.completed.length }}</span></h4><AutoScroll :label="`${member.name}已完成任务自动滚动`" :speed="18"><TaskLine v-for="task in member.completed" :key="task.id" :task="task" /><p v-if="!member.completed.length" class="wall-no-task">暂无完成记录</p></AutoScroll></section>
-                </div>
-              </article>
-              <section v-if="group.name === '其他' && store.data?.incompleteTasks?.length" class="wall-incomplete">
-                <h3 class="orange">待补充信息 · {{ store.data.incompleteTasks.length }} 条</h3>
-                <p>以下记录暂不计入任务统计，填写后自动恢复</p>
-                <article v-for="task in store.data.incompleteTasks" :key="task.id"><h4>{{ task.title }}</h4><p class="orange">{{ task.reason }}</p></article>
-              </section>
-              <div v-else-if="!view.members.some(m => m.group === group.name)" class="wall-empty">暂无在队成员</div>
-              </AutoScroll>
+              <MemberCarousel :members="view.members.filter(m => m.group === group.name)" :label="group.name + '成员自动轮播'">
+                <template #default="{member}"><WallMemberCard :member="member" /></template>
+              </MemberCarousel>
             </section>
           </div>
           <div v-else class="wall-empty">{{ store.error ? '飞书数据连接异常，系统将自动重试' : 'INITIALIZING MISSION CONTROL' }}</div>
         </section>
 
         <aside v-if="view" class="wall-alerts" aria-label="全部执行预警">
+          <section v-if="store.data?.incompleteTasks?.length || view.members.some(m=>!m.group)" class="wall-panel wall-quality">
+            <div class="wall-panel-title"><h2>待补充信息</h2><span class="orange">请完善飞书字段</span></div>
+            <AutoScroll label="待补充信息自动滚动">
+              <article v-for="task in store.data?.incompleteTasks" :key="task.id" class="wall-deadline-row"><div><h3>{{ task.title }}</h3><p class="orange">{{ task.reason }}</p></div></article>
+              <article v-for="member in view.members.filter(m=>!m.group)" :key="member.id" class="wall-deadline-row"><div><h3>{{ member.name }} · 待分组</h3><p>已完成 {{ member.completed.length }} / 未完成 {{ member.pending.length }} · 已计入统计</p><p v-for="task in member.pending.slice(0,3)" :key="task.id">● {{ task.title }}</p><p v-if="member.pending.length>3">+{{ member.pending.length-3 }} 项任务</p></div></article>
+            </AutoScroll>
+          </section>
           <section class="wall-panel wall-attendance">
             <div class="wall-panel-title"><h2><UserRoundX :size="30" />今日未打卡 <small v-if="store.data?.checkInSource === 'mock' || store.data?.source === 'mock'">虚拟数据</small></h2><strong class="orange mono">{{ String(view.absent.length).padStart(2,'0') }}</strong></div>
             <AutoScroll label="未打卡名单自动滚动">
-            <div class="wall-absent-list"><div v-for="member in view.absent" :key="member.id" class="wall-absent"><div><strong>{{ member.name }}</strong><span>{{ member.group }}</span></div><b :class="member.missedDays >= 3 ? 'red' : 'orange'">{{ member.missedDays }}{{ member.missedIsMinimum ? '+' : '' }} 天<span>连续未打卡</span></b></div></div>
+            <div class="wall-absent-list"><div v-for="member in view.absent" :key="member.id" class="wall-absent"><div><strong>{{ member.name }}</strong><span>{{ groupLabel(member.group) }}</span></div><b :class="member.missedDays >= 3 ? 'red' : 'orange'">{{ member.missedDays }}{{ member.missedIsMinimum ? '+' : '' }} 天<span>连续未打卡</span></b></div></div>
             <p v-if="!view.absent.length" class="wall-empty green">今日全员完成打卡</p>
             </AutoScroll>
           </section>

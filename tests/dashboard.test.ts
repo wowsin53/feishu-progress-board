@@ -9,7 +9,7 @@ describe('任务与打卡统计',()=>{
   it('演示数据覆盖成员、分组、任务、打卡与异常',()=>{
     const data=createMockDashboard(now),view=deriveDashboard(data,'全部成员',now)
     expect(data.members.length).toBeGreaterThanOrEqual(15);expect(data.tasks).toHaveLength(48)
-    expect(new Set(data.members.map(m=>m.group)).size).toBe(4)
+    expect(new Set(data.members.map(m=>m.group)).size).toBe(5)
     expect(view.summary.checkedIn+view.summary.notCheckedIn).toBe(16)
     expect(view.overdue.length).toBeGreaterThan(0);expect(view.upcoming.length).toBeGreaterThan(0)
   })

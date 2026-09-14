@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { normalizeGroup, normalizeTaskCategory } from '../config/groups'
 import type { DashboardData } from '../types/dashboard'
 const client=axios.create({baseURL:import.meta.env.VITE_API_BASE_URL || '',timeout:60000,withCredentials:true})
 export async function fetchDashboard(): Promise<DashboardData> {
@@ -17,5 +18,9 @@ export async function fetchDashboard(): Promise<DashboardData> {
   }
   const {data}=response
   if(!data || !Array.isArray(data.members) || !Array.isArray(data.tasks) || !Array.isArray(data.checkIns) || !['mock','feishu'].includes(data.source)) throw new Error('INVALID_DATA')
-  return data
+  // Read historical API values without changing Feishu records.
+  return {...data,
+    members:data.members.map(m=>({...m,group:normalizeGroup(m.group)})),
+    tasks:data.tasks.map(t=>({...t,group:normalizeGroup(t.group),category:normalizeTaskCategory(t.category || t.group),tags:t.tags?.map(normalizeTaskCategory)})),
+  }
 }

@@ -1,3 +1,4 @@
+import { normalizeGroup, normalizeTaskCategory } from '../src/config/groups'
 import type { DashboardData, Group, Member } from '../src/types/dashboard'
 import { dateKey, shiftDay } from '../src/utils/date'
 import { fieldText, normalizeRecords, type FeishuRecord } from './normalize'
@@ -10,7 +11,7 @@ const taskAliases: Record<string, string[]> = {
   截止日期: ['截止日期','截止时间','计划完成时间','计划完成日期','预计完成日期'],
   任务优先级: ['任务优先级','优先级','重要紧急程度'], 任务描述: ['任务描述','描述','说明'],
   完成日期: ['完成日期','完成时间','实际完成日期'], 任务进度: ['任务进度','进度'],
-  父记录: ['父记录'], 任务执行人: ['任务执行人'],
+  任务分类: ['任务分类','任务类型','分类'], 父记录: ['父记录'], 任务执行人: ['任务执行人'],
 }
 const memberAliases: Record<string, string[]> = {
   成员ID: ['成员ID'], 姓名: ['姓名','成员姓名','成员名称'], 组别: ['组别','所属组别','小组'],
@@ -36,9 +37,10 @@ function remap(rows: FeishuRecord[], table: TableSchema, aliases: Record<string,
   return rows.map(row => ({ record_id: row.record_id, fields: Object.fromEntries(Object.entries(map).filter(([,source]) => source).map(([target,source]) => [target,row.fields[source!]])) }))
 }
 const tagsOf = (value: unknown): string[] => (Array.isArray(value) ? value : [value]).map(fieldText).filter(Boolean)
-const toGroup = (value: unknown): Group => {
-  const groups = tagsOf(value).map(t => t.endsWith('组') ? t : `${t}组`).filter(t => ['机械组','电控组','视觉组'].includes(t))
-  return new Set(groups).size === 1 ? groups[0] as Group : '其他'
+const toGroup = normalizeGroup
+const personKey = (value: unknown): string => {
+  const object = value && typeof value === 'object' ? value as Record<string,unknown> : {}
+  return fieldText(object.id) || 'name:' + fieldText(object.name || object.text || value)
 }
 export function normalizeDiscovered(taskRows: FeishuRecord[], taskTable: TableSchema, memberRows: FeishuRecord[] = [], memberTable?: TableSchema): DashboardData {
   const incompleteTasks: NonNullable<DashboardData['incompleteTasks']> = []
@@ -63,7 +65,9 @@ export function normalizeDiscovered(taskRows: FeishuRecord[], taskTable: TableSc
   const metadata = new Map(tasks.map(task => {
     const parent = task.fields['父记录'] as { link_record_ids?: string[]; record_ids?: string[] } | undefined
     const parentIds = parent?.link_record_ids || parent?.record_ids || (Array.isArray(parent) ? parent.flatMap((p: unknown) => typeof p === 'string' ? [p] : (p as {record_ids?:string[]}).record_ids || []) : [])
-    return [task.record_id,{tags:tagsOf(task.fields['所属组别']),parentIds}]
+    const rawOwners = task.fields['负责人']
+    const primaryOwners = (Array.isArray(rawOwners) ? rawOwners : rawOwners ? [rawOwners] : []).map(personKey)
+    return [task.record_id,{primaryOwners,tags:tagsOf(task.fields['所属组别']).map(normalizeTaskCategory),category:normalizeTaskCategory(fieldText(task.fields['任务分类'])) || (tagsOf(task.fields['所属组别']).some(t=>['其他','其他任务','联调任务'].includes(t)) ? '联调任务' : ''),parentIds}]
   }))
   for (const task of tasks) {
     task.fields['所属组别'] = toGroup(task.fields['所属组别'])
@@ -74,7 +78,7 @@ export function normalizeDiscovered(taskRows: FeishuRecord[], taskTable: TableSc
   if (!memberTable) {
     // A personnel field carries stable open_id + display name. Plain text uses a
     // stable name key; linked record IDs require an actual member table.
-    const found = new Map<string, {name:string;group:Group}>()
+    const found = new Map<string, {name:string;groups:Set<Group>;ownedGroups:Set<Group>}>()
     for (const task of tasks) {
       const raw = task.fields['负责人']
       const owners = Array.isArray(raw) ? raw : [raw]
@@ -86,13 +90,22 @@ export function normalizeDiscovered(taskRows: FeishuRecord[], taskTable: TableSc
         if (!name || /^rec[a-zA-Z0-9]+$/.test(name)) throw new Error('负责人缺少可读姓名，请配置成员表')
         const id = fieldText(object.id) || `name:${name}`
         const group = toGroup(task.fields['所属组别'])
-        if (found.has(id) && found.get(id)!.group !== group) found.get(id)!.group = '其他'
-        else if (!found.has(id)) found.set(id,{name,group})
+        if (!found.has(id)) found.set(id,{name,groups:new Set(),ownedGroups:new Set()})
+        if (group) {
+          found.get(id)!.groups.add(group)
+          if (metadata.get(task.record_id)?.primaryOwners.includes(id)) found.get(id)!.ownedGroups.add(group)
+        }
         ids.push(id)
       }
       task.fields['负责人'] = ids
     }
-    for (const [id,member] of found) members.push({record_id:id,fields:{成员ID:id,姓名:member.name,组别:member.group,是否在队:true,加入时间:shiftDay(dateKey(),-7)}})
+    for (const [id,member] of found) {
+      // Prefer tasks the person owns; assisting another group must not reclassify them.
+      // Blank and multi-group tasks provide no unique personnel-group evidence.
+      const candidates = member.ownedGroups.size ? member.ownedGroups : member.groups
+      const group = candidates.size === 1 ? [...candidates][0] : null
+      members.push({record_id:id,fields:{成员ID:id,姓名:member.name,组别:group,是否在队:true,加入时间:shiftDay(dateKey(),-7)}})
+    }
     warnings.push('成员由任务负责人和执行人提取，未分配任务的成员暂不计入；打卡为虚拟数据')
   }
   for (const member of members) {
@@ -105,9 +118,11 @@ export function normalizeDiscovered(taskRows: FeishuRecord[], taskTable: TableSc
   for (const task of result.tasks) {
     const extra = metadata.get(task.id)
     task.tags = extra?.tags
+    task.category = extra?.category || task.category
     task.parentIds = extra?.parentIds
     task.parentTitles = extra?.parentIds.map(id => result.tasks.find(parent => parent.id === id)?.title || id)
   }
+  if (result.members.some(m=>!m.group)) warnings.push('部分成员的组别待确认，已保留人数及任务统计；请填写五个组别之一')
   result.warnings.push(...warnings)
   return result
 }

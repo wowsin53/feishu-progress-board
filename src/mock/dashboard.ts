@@ -1,10 +1,11 @@
-import type { DashboardData, Group, Task, TaskStatus } from '../types/dashboard'
+import { GROUPS } from '../config/groups'
+import type { DashboardData, Task, TaskStatus } from '../types/dashboard'
 import { dateKey, dayStart, shiftDay } from '../utils/date'
 export function createMockDashboard(now = Date.now()): DashboardData {
   const today = dateKey(now)
-  const groups: Group[] = ['电控组', '机械组', '视觉组', '其他']
+  const groups = ['电控组', ...GROUPS.filter(g=>g!=='电控组')] as const
   const names = ['陈宇航','林子墨','王奕辰','苏沐阳','周景行','许知远','陆星野','沈亦舟','江予安','李明轩','赵思齐','顾言川','张以恒','徐嘉宁','黄子扬','宋文博']
-  const members = names.map((name, i) => ({ id: `RM-${String(i+1).padStart(3,'0')}`, name, group: groups[i % 4]!, active: true, joinedAt: shiftDay(today, -35) }))
+  const members = names.map((name, i) => ({ id: `RM-${String(i+1).padStart(3,'0')}`, name, group: groups[i % groups.length]!, active: true, joinedAt: shiftDay(today, -35) }))
   const titles = [['底盘速度环调试','CAN 通信联调','裁判系统协议解析','云台姿态控制'], ['步兵底盘装配','弹仓供弹机构优化','云台结构强度校核','发射机构加工'], ['装甲板识别优化','相机内参标定','目标追踪算法测试','视觉串口协议联调'], ['整车联调记录','比赛物资清点','训练场地布置','技术文档归档']]
   const statuses: TaskStatus[] = ['已完成','进行中','未开始','待验收']
   const tasks: Task[] = Array.from({length:48}, (_,i) => {

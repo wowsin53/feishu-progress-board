@@ -1,10 +1,11 @@
-import type { DashboardData, Group, TaskStatus } from '../src/types/dashboard'
+import { normalizeGroup, normalizeTaskCategory } from '../src/config/groups'
+import type { DashboardData, TaskStatus } from '../src/types/dashboard'
 import { dateKey, deadlineValue } from '../src/utils/date'
 export interface FeishuRecord { record_id: string; fields: Record<string, unknown> }
 const object = (v: unknown): Record<string, unknown> => typeof v === 'object' && v !== null ? v as Record<string,unknown> : {}
 export const fieldText = (v: unknown): string => typeof v === 'string' || typeof v === 'number' ? String(v) : Array.isArray(v) ? v.map(fieldText).join('') : String(object(v).text ?? object(v).name ?? '')
 export const fieldBoolean = (v: unknown) => v === true || v === 1 || ['是','已打卡','在队','true','1'].includes(fieldText(v).trim())
-const groupValue = (v: unknown): Group => { const g = fieldText(v); return g === '机械组' || g === '电控组' || g === '视觉组' ? g : '其他' }
+const groupValue = normalizeGroup
 function dateField(v: unknown, exact = true): string | undefined {
   if (v === undefined || v === null || v === '') return undefined
   const text = fieldText(v)
@@ -48,7 +49,7 @@ export function normalizeRecords(memberRows: FeishuRecord[], taskRows: FeishuRec
     const priority = ['高','紧急','P0','P1','重要紧急','紧急不重要'].includes(priorityText) ? 3 : ['中','P2','重要不紧急'].includes(priorityText) ? 2 : 1
     const deadline = dateField(f['截止日期'], exactDeadline)
     if (!deadline && status !== '已完成') warnings.push('部分未完成任务缺少截止日期，未计入截止提醒')
-    return { id:fieldText(f['任务ID']) || r.record_id,title,memberIds,group:groupValue(f['所属组别']),status,priority,deadline,startAt:dateField(f['开始日期']),completedAt:dateField(f['完成日期']),progress:Math.min(100,Math.max(0,Number(f['任务进度']) || 0)),description:fieldText(f['任务描述']) }
+    return { id:fieldText(f['任务ID']) || r.record_id,title,memberIds,category:normalizeTaskCategory(fieldText(f['任务分类']) || fieldText(f['所属组别'])),group:groupValue(f['所属组别']),status,priority,deadline,startAt:dateField(f['开始日期']),completedAt:dateField(f['完成日期']),progress:Math.min(100,Math.max(0,Number(f['任务进度']) || 0)),description:fieldText(f['任务描述']) }
   })
   const checkIns = checkRows.map(r => {
     const f = r.fields, memberIds = resolve(f['成员']), date = dateField(f['日期'])
