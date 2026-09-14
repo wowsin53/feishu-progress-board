@@ -1,0 +1,15 @@
+node_modules/
+.npm-cache/
+.tools/
+dist/
+dist-server/
+.env
+.env.*
+!.env.example
+!deploy/ecs.env.example
+playwright-report/
+test-results/
+*.log
+docs/*.png
+docs/*.jpg
+docs/*.jpeg

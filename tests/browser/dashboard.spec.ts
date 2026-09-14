@@ -1,0 +1,42 @@
+import { test,expect } from '@playwright/test'
+test('看板筛选、分页、任务弹窗与局部刷新',async({page})=>{
+  await page.setViewportSize({width:1920,height:1080})
+  await page.goto('/?view=desktop')
+  await expect(page.getByText('演示数据',{exact:false}).first()).toBeVisible()
+  await expect(page.locator('.member-card')).toHaveCount(6)
+  await page.getByRole('button',{name:'下一页成员'}).click()
+  await expect(page.getByRole('button',{name:'查看陆星野的完整任务'})).toBeVisible()
+  await page.getByRole('button',{name:'机械组',exact:true}).click()
+  await expect(page.locator('.member-card')).toHaveCount(4)
+  await expect(page.locator('.stat-card').first().locator('.stat-total')).toHaveText('/ 04')
+  await page.locator('.member-card').first().click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await expect(page.getByRole('dialog').getByText('当前未完成')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.getByRole('button',{name:'刷新数据'}).click()
+  await expect(page.getByRole('button',{name:'刷新数据'})).toBeEnabled()
+  await expect(page.locator('.member-card')).toHaveCount(4)
+  await page.getByRole('button',{name:'全部成员',exact:true}).click()
+  await page.screenshot({path:'test-results/dashboard-desktop.png',fullPage:true})
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+})
+test('接口断开保留旧数据，重试后恢复',async({page})=>{
+  await page.goto('/?view=desktop');await expect(page.locator('.member-card')).toHaveCount(6)
+  await page.route('**/api/dashboard',route=>route.fulfill({status:502,contentType:'application/json',body:'{"error":"DATA_CONNECTION_LOST"}'}))
+  await page.getByRole('button',{name:'刷新数据'}).click()
+  await expect(page.getByRole('alert')).toContainText('DATA CONNECTION LOST')
+  await expect(page.locator('.member-card')).toHaveCount(6)
+  await page.unroute('**/api/dashboard')
+  await page.getByRole('button',{name:'重新加载'}).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})
+test('移动端、笔记本和2K无横向溢出',async({page})=>{
+  await page.goto('/?view=desktop');await expect(page.locator('.member-card')).toHaveCount(6)
+  for(const [width,height] of [[390,844],[1366,768],[2560,1440]]){
+    await page.setViewportSize({width:width!,height:height!})
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+    await page.screenshot({path:`test-results/dashboard-${width}.png`,fullPage:true})
+  }
+})
+

@@ -1,0 +1,30 @@
+<script setup lang="ts">
+import { computed,onMounted,onBeforeUnmount,ref,watch } from 'vue'
+import { UsersRound,UserRoundCheck,ListTodo,TriangleAlert,ChevronLeft,ChevronRight,Radio } from 'lucide-vue-next'
+import { useDashboard } from '../stores/dashboard'
+import type { MemberView } from '../types/dashboard'
+import { deriveDashboard } from '../utils/dashboard'
+import DashboardHeader from '../components/DashboardHeader.vue'
+import StatsCard from '../components/StatsCard.vue'
+import GroupFilter from '../components/GroupFilter.vue'
+import MemberCard from '../components/MemberCard.vue'
+import MemberTaskModal from '../components/MemberTaskModal.vue'
+import CheckInPanel from '../components/CheckInPanel.vue'
+import OverduePanel from '../components/OverduePanel.vue'
+import UpcomingPanel from '../components/UpcomingPanel.vue'
+import DailyQuote from '../components/DailyQuote.vue'
+const store=useDashboard(),page=ref(1),selectedId=ref<string|null>(null),fullscreen=ref(false)
+const pageCount=computed(()=>Math.max(1,Math.ceil((store.view?.members.length || 0)/6)))
+const visibleMembers=computed(()=>store.view?.members.slice((page.value-1)*6,page.value*6) || [])
+const selected=computed(()=>selectedId.value && store.data ? deriveDashboard(store.data,'全部成员',store.now).members.find(m=>m.id===selectedId.value) : undefined)
+watch(()=>store.group,()=>page.value=1)
+watch(pageCount,count=>{if(page.value>count) page.value=count})
+const select=(m:MemberView)=>{selectedId.value=m.id}
+let clock:ReturnType<typeof setInterval>,poll:ReturnType<typeof setInterval>
+const fullscreenChanged=()=>{fullscreen.value=!!document.fullscreenElement}
+async function toggleFullscreen(){try{if(document.fullscreenElement) await document.exitFullscreen();else await document.documentElement.requestFullscreen()}catch{fullscreen.value=false}}
+const onVisible=()=>{if(document.visibilityState==='visible'){store.now=Date.now();void store.refresh()}}
+onMounted(()=>{void store.refresh();clock=setInterval(()=>store.now=Date.now(),1000);poll=setInterval(()=>{if(document.visibilityState==='visible')void store.refresh()},60000);document.addEventListener('fullscreenchange',fullscreenChanged);document.addEventListener('visibilitychange',onVisible)})
+onBeforeUnmount(()=>{clearInterval(clock);clearInterval(poll);document.removeEventListener('fullscreenchange',fullscreenChanged);document.removeEventListener('visibilitychange',onVisible)})
+</script>
+<template><div class="dashboard-shell"><DashboardHeader :fullscreen="fullscreen" @fullscreen="toggleFullscreen"/><main><div v-if="store.error" class="error-banner" role="alert"><TriangleAlert :size="20"/><div><strong>DATA CONNECTION LOST</strong><span>飞书数据连接异常{{ store.data ? ' · 当前展示上次同步数据' : '，请检查连接与服务端配置' }}</span></div><button :disabled="store.loading" @click="store.refresh">重新加载</button></div><div v-for="warning in store.data?.warnings" :key="warning" class="data-warning">{{ warning }}</div><template v-if="store.view"><div class="overview-label"><span><Radio :size="14"/> BASE OPERATIONS <b>/ 基地执行概览</b></span><span class="micro">{{ store.group }} · 每 60 秒同步</span></div><section class="stats-grid" aria-label="核心统计"><StatsCard label="今日未打卡" english="AWAITING CHECK-IN" :value="store.view.summary.notCheckedIn" :total="store.view.members.length" :tone="store.view.summary.notCheckedIn ? 'orange' : 'green'" :icon="UsersRound" :hint="store.view.summary.notCheckedIn ? '等待成员完成今日打卡' : '今日全员完成打卡'"/><StatsCard label="今日已打卡" english="CHECKED IN TODAY" :value="store.view.summary.checkedIn" :total="store.view.members.length" tone="cyan" :icon="UserRoundCheck" hint="今日有效打卡记录"/><StatsCard label="未完成任务" english="ACTIVE MISSIONS" :value="store.view.summary.unfinishedTasks" tone="blue" :icon="ListTodo" hint="未开始 / 进行中 / 待验收"/><StatsCard label="逾期任务" english="OVERDUE MISSIONS" :value="store.view.summary.overdueTasks" :tone="store.view.summary.overdueTasks ? 'red' : 'green'" :icon="TriangleAlert" :hint="store.view.summary.overdueTasks ? '已超过截止日期，请优先处理' : '当前没有逾期任务'"/></section><div class="workspace"><section class="member-area"><div class="section-heading"><div><span class="section-index mono">01 /</span><h2>成员任务状态</h2><span class="micro">MEMBER STATUS</span></div><span class="member-count mono">{{ store.view.members.length }} MEMBERS</span></div><GroupFilter/><div class="member-grid" :aria-busy="store.loading"><MemberCard v-for="member in visibleMembers" :key="member.id" :member="member" @select="select"/></div><div v-if="!visibleMembers.length" class="empty-state">该组暂无在队成员</div><div class="member-pagination"><span>点击成员卡片查看完整任务 <span class="mono">↗</span></span><div><span class="mono">{{ String(page).padStart(2,'0') }} <b>/ {{ String(pageCount).padStart(2,'0') }}</b></span><button class="icon-button" aria-label="上一页成员" :disabled="page===1" @click="page--"><ChevronLeft :size="17"/></button><button class="icon-button" aria-label="下一页成员" :disabled="page===pageCount" @click="page++"><ChevronRight :size="17"/></button></div></div><UpcomingPanel :tasks="store.view.upcoming" :members="store.data!.members" :now="store.now" @select="selectedId=$event"/></section><aside class="exception-area"><div class="section-heading"><div><span class="section-index mono">02 /</span><h2>执行预警</h2></div><span class="live-label micro"><i class="tiny-dot"/> LIVE</span></div><CheckInPanel :members="store.view.absent" @select="select"/><OverduePanel :tasks="store.view.overdue" :members="store.data!.members" :now="store.now" @select="selectedId=$event"/></aside></div></template><div v-else-if="store.loading" class="initial-loading" role="status"><Radio :size="28"/><p>正在建立基地数据连接…</p><span class="micro">INITIALIZING MISSION CONTROL</span></div><div v-else class="initial-loading"><p>暂时无法读取看板数据</p><button class="text-button" @click="store.refresh">重试连接</button></div><DailyQuote :now="store.now"/><div class="bottom-line micro"><span>ROBOMASTER BASE <b>·</b> MISSION CONTROL SYSTEM</span><span>北京时间 UTC+8 <b>·</b> {{ store.data?.source === 'mock' ? 'DEMONSTRATION DATA' : 'FEISHU DATA SOURCE' }}</span></div></main><MemberTaskModal v-if="selected" :member="selected" @close="selectedId=null"/></div></template>

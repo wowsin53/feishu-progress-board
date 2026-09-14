@@ -1,0 +1,39 @@
+{
+  "name": "robomaster-mission-control",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n API,WEB \"tsx watch server/index.ts\" \"vite --host 127.0.0.1\"",
+    "build": "vue-tsc --noEmit && vite build && tsup server/index.ts --format esm --out-dir dist-server --no-splitting",
+    "preview": "vite preview --host 127.0.0.1",
+    "start": "node dist-server/index.js",
+    "test": "vitest run",
+    "test:ui": "playwright test"
+  },
+  "dependencies": {
+    "axios": "^1.8.4",
+    "dayjs": "^1.11.13",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "lucide-vue-next": "^0.468.0",
+    "pinia": "^3.0.1",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.1",
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-vue": "^5.2.3",
+    "concurrently": "^9.1.2",
+    "tsup": "^8.4.0",
+    "tsx": "^4.19.3",
+    "typescript": "~5.7.3",
+    "vite": "^6.2.5",
+    "vitest": "^4.1.11",
+    "vue-tsc": "^2.2.8"
+  }
+}

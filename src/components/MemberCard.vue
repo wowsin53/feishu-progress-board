@@ -1,0 +1,9 @@
+<script setup lang="ts">
+import { ArrowUpRight } from 'lucide-vue-next'
+import type { MemberView } from '../types/dashboard'
+import TaskLine from './TaskLine.vue'
+defineProps<{member:MemberView}>()
+defineEmits<{select:[member:MemberView]}>()
+const groupAbbr:Record<string,string>={'机械组':'ME','电控组':'EC','视觉组':'CV','其他':'OP'}
+</script>
+<template><button class="member-card" @click="$emit('select',member)" :aria-label="`查看${member.name}的完整任务`"><div class="member-top"><div class="avatar" :class="`avatar-${groupAbbr[member.group]}`">{{ member.name.slice(-2) }}<span>{{ groupAbbr[member.group] }}</span></div><div class="member-identity"><h3>{{ member.name }}</h3><span>{{ member.group }} <b class="mono">{{ member.id }}</b></span></div><ArrowUpRight class="member-arrow" :size="17" /><div class="check-status" :class="member.checkedIn ? 'green' : 'orange'"><i class="tiny-dot" />{{ member.checkedIn ? '今日已打卡' : '今日未打卡' }}</div></div><div class="member-progress"><span>完成 <b>{{ member.completed.length }}</b><span class="separator">/</span>未完成 <b>{{ member.pending.length }}</b></span><strong class="mono">{{ member.completion === null ? '暂无任务' : `${member.completion}%` }}</strong></div><div class="progress-track"><i :style="{width:`${member.completion || 0}%`}" /></div><div class="member-task-section"><div class="task-section-label">当前任务 <span class="mono">{{ String(member.pending.length).padStart(2,'0') }}</span></div><TaskLine v-for="task in member.pending.slice(0,3)" :key="task.id" :task="task"/><p v-if="!member.pending.length" class="small-empty">{{ member.tasks.length ? '所有任务已完成' : '等待新的任务' }}</p></div><div class="member-task-section completed-section"><div class="task-section-label">最近完成</div><TaskLine v-for="task in member.completed.slice(0,3)" :key="task.id" :task="task"/><p v-if="!member.completed.length" class="small-empty">暂无完成记录</p></div></button></template>
