@@ -6,7 +6,7 @@ import {ReportStore} from '../server/reports/store'
 import {createMockDashboard} from '../src/mock/dashboard'
 it('管理员鉴权、预览、立即发送、日志与同日去重',async()=>{
   vi.stubEnv('ADMIN_REPORT_TOKEN','test-only-admin-token-32-characters-long')
-  vi.stubEnv('REPORT_ENABLED','false');vi.stubEnv('REPORT_SEND_TIME','22:00')
+  vi.stubEnv('REPORT_ENABLED','false');vi.stubEnv('REPORT_SEND_TIME','00:30')
   const data=createMockDashboard();data.source='feishu';data.checkInSource='mock'
   const store=new ReportStore(':memory:'),deliver=vi.fn(async()=>{})
   const service=new ReportService(store,async()=>data,deliver,()=>({url:'test-only',secret:''}))
@@ -19,7 +19,7 @@ it('管理员鉴权、预览、立即发送、日志与同日去重',async()=>{
     expect((await fetch(url+'send',{method:'POST'})).status).toBe(401)
     expect((await fetch(url+'preview',{headers:{Authorization:'Bearer wrong'}})).status).toBe(401)
     expect(deliver).not.toHaveBeenCalled()
-    expect(await (await fetch(url+'status',{headers})).json()).toMatchObject({time:'22:00',timezone:'Asia/Shanghai',enabled:false})
+    expect(await (await fetch(url+'status',{headers})).json()).toMatchObject({time:'00:30',timezone:'Asia/Shanghai',enabled:false})
     expect(await (await fetch(url+'preview',{headers})).json()).toHaveProperty('text')
     expect(deliver).not.toHaveBeenCalled()
     expect(await (await fetch(url+'send',{method:'POST',headers})).json()).toMatchObject({status:'sent',record:{state:'sent',mode:'manual'}})

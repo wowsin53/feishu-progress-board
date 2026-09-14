@@ -21,14 +21,14 @@ test('管理员页面仅点击发送才调用发送接口，令牌不持久化',
   await page.route('**/api/admin/reports/**',route=>{
     const path=new URL(route.request().url()).pathname.split('/').pop()
     if(path==='send'){sends++;return route.fulfill({json:{status:'sent'}})}
-    return route.fulfill({json:path==='status'?{time:'22:00',enabled:true,webhookConfigured:true}:path==='history'?{records:[]}:{text:'真实数据日报预览'}})
+    return route.fulfill({json:path==='status'?{time:'00:30',enabled:true,webhookConfigured:true}:path==='history'?{records:[]}:{text:'真实数据日报预览'}})
   })
   await page.goto('/?view=admin')
-  await expect(page.getByRole('button',{name:'立即发送今日任务日报',exact:true})).toBeDisabled()
+  await expect(page.getByRole('button',{name:'立即发送前一日任务日报',exact:true})).toBeDisabled()
   await page.getByPlaceholder('输入服务器 ADMIN_REPORT_TOKEN').fill('test-only-token')
-  await page.getByRole('button',{name:'读取配置并预览今日日报'}).click()
+  await page.getByRole('button',{name:'读取配置并预览前一日日报'}).click()
   await expect(page.locator('pre')).toContainText('真实数据日报预览');expect(sends).toBe(0)
-  await page.getByRole('button',{name:'立即发送今日任务日报',exact:true}).click()
+  await page.getByRole('button',{name:'立即发送前一日任务日报',exact:true}).click()
   await expect(page.getByRole('status')).toHaveText('日报已发送。');expect(sends).toBe(1)
   expect(await page.evaluate(()=>JSON.stringify(localStorage)+JSON.stringify(sessionStorage))).not.toContain('test-only-token')
 })

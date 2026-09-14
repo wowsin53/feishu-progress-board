@@ -1,11 +1,16 @@
 import type { DashboardData, Task } from '../../src/types/dashboard'
 import { GROUPS, groupLabel } from '../../src/config/groups'
 import { deriveDashboard, isActiveTask, overdueDays, pendingOrder } from '../../src/utils/dashboard'
-import { chinaTime, dateKey } from '../../src/utils/date'
+import { chinaTime, dateKey, dayStart, shiftDay } from '../../src/utils/date'
 const plain=(value:string)=>value.replace(/[\r\n\t]/g,' ').replace(/</g,'＜').replace(/>/g,'＞').slice(0,160)
+export const reportDate=(now=Date.now())=>shiftDay(dateKey(now),-1)
 export function generateDailyReport(data:DashboardData, now=Date.now()) {
   if(data.source!=='feishu') throw new Error('REPORT_REQUIRES_LIVE_TASKS')
-  const view=deriveDashboard(data,'全部成员',now), date=dateKey(now)
+  const view=deriveDashboard(data,'全部成员',now), date=reportDate(now)
+  const attendance=deriveDashboard(data,'全部成员',dayStart(date).endOf('day').valueOf())
+  const missingIds=new Set(view.missingDeadlines.flatMap(t=>t.memberIds))
+  const missingNames=[...new Set(view.members.filter(m=>missingIds.has(m.id)).map(m=>m.name))]
+  const absentNames=attendance.absent.map(m=>plain(m.name)).join('、')
   const completed=view.tasks.filter(t=>t.status==='已完成')
   const effective=view.tasks.filter(t=>t.status!=='已放弃')
   const completedToday=completed.filter(t=>t.completedAt && dateKey(t.completedAt)===date)
@@ -19,13 +24,15 @@ export function generateDailyReport(data:DashboardData, now=Date.now()) {
       ...(tasks.length>limit ? ['另有 '+(tasks.length-limit)+' 项，请查看基地看板'] : []),
     ].join('\n')
     return [
-      '【RoboMaster 基地今日任务日报】','日期：'+date,'数据截至：'+chinaTime(now).format('HH:mm:ss')+'（北京时间）','',
-      '👥 今日人员','总人数：'+view.members.length,
-      ...(data.checkInSource==='mock' ? ['打卡为虚拟演示数据，不代表真实考勤','已打卡（虚拟）：'+view.summary.checkedIn,'未打卡（虚拟）：'+view.summary.notCheckedIn] : ['已打卡：'+view.summary.checkedIn,'未打卡：'+view.summary.notCheckedIn]),'',
+      '【GIRT 今日任务日报】','日期：'+date,'数据截至：'+chinaTime(now).format('YYYY-MM-DD HH:mm:ss')+'（北京时间）','',
+      '👥 当日人员','总人数：'+attendance.members.length,
+      ...(data.checkInSource==='mock' ? ['打卡为虚拟演示数据，不代表真实考勤'] : []),
+      '已打卡：'+attendance.summary.checkedIn+' 人',
+      '未打卡：'+attendance.summary.notCheckedIn+' 人'+(absentNames?'——'+absentNames:''),'',
       '📋 今日任务（截至发送时的任务快照）','任务总数：'+view.tasks.length,'已完成（累计）：'+completed.length,'今日完成：'+completedToday.length,
       '进行中：'+view.tasks.filter(t=>t.status==='进行中').length,'未开始：'+view.tasks.filter(t=>t.status==='未开始').length,
       '待验收：'+view.tasks.filter(t=>t.status==='待验收').length,'已停滞：'+view.tasks.filter(t=>t.status==='已停滞').length,'已放弃：'+view.tasks.filter(t=>t.status==='已放弃').length,
-      '今日完成率：'+rate+'%（当前有效任务累计完成占比，已放弃不计入）',
+      '当前完成率：'+rate+'%（当前有效任务累计完成占比，已放弃不计入）',
       ...(completed.some(t=>!t.completedAt)?['部分已完成任务未填实际完成日期，未计入“今日完成”']:[]),'',
       '🔧 各组情况',...GROUPS.map(group=>{const v=deriveDashboard(data,group,now);return group+'：完成 '+v.tasks.filter(t=>t.status==='已完成').length+' / 未完成 '+v.summary.unfinishedTasks}),
       ...(view.members.some(m=>!m.group)?['待分组成员：'+view.members.filter(m=>!m.group).map(m=>plain(m.name)).join('、')]:[]),
@@ -33,7 +40,8 @@ export function generateDailyReport(data:DashboardData, now=Date.now()) {
       list('⚠️ 今日未完成重点任务',priority),'',
       list('🔴 已逾期任务',view.overdue,t=>' —— 已逾期 '+overdueDays(t,now)+' 天'),' ',
       list('🟠 即将到期',view.upcoming,t=>' —— 剩余 '+Math.max(1,Math.ceil((Date.parse(t.deadline!)-now)/3600000))+' 小时'),'',
-      list('⚠️ 未填写截止日期',view.missingDeadlines,()=>'', '✅ 所有未完成任务均已填写截止日期'),'',
+      '⚠️ 未填写截止日期的负责人',
+      missingNames.length?missingNames.map(plain).join('、'):'✅ 所有未完成任务均已填写截止日期','',
       ...(data.incompleteTasks?.length ? ['待补充信息：'+data.incompleteTasks.length+' 条，未计入任务统计；请完善负责人或状态。'] : []),
       '今日重点：'+view.missingDeadlines.length+' 项任务未填写截止日期，'+view.overdue.length+' 项已逾期，'+view.upcoming.length+' 项将在48小时内到期，请对应负责人及时处理。',
     ].join('\n')

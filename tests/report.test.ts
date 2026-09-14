@@ -40,10 +40,10 @@ describe('真实数据日报生成',()=>{
   it('包含五组、真实任务统计和独立缺日期检查，虚拟打卡不冒充考勤',()=>{
     const data=live();data.tasks[1]!.status='进行中';data.tasks[1]!.deadline=undefined
     const report=generateDailyReport(data,now)
-    expect(report.date).toBe('2026-09-14')
-    for(const text of ['RoboMaster','任务总数：48','运营组','操作手组','未填写截止日期','虚拟演示数据']) expect(report.text).toContain(text)
+    expect(report.date).toBe('2026-09-13')
+    for(const text of ['GIRT','任务总数：48','运营组','操作手组','未填写截止日期','虚拟演示数据']) expect(report.text).toContain(text)
     expect(report.text).toContain('当前有效任务累计完成占比')
-    expect(report.text).toContain(data.tasks[1]!.title)
+    expect(report.text.split('⚠️ 未填写截止日期的负责人')[1]!.split('今日重点：')[0]).not.toContain(data.tasks[1]!.title)
     expect(()=>generateDailyReport(createMockDashboard(now),now)).toThrow('LIVE_TASKS')
   })
   it('无缺日期显示正常提示；超长日报限制详情但保持总数',()=>{
@@ -123,4 +123,11 @@ describe('Webhook 和服务器定时器',()=>{
     const stopAgain=startReportScheduler(run,{REPORT_ENABLED:'true',REPORT_SEND_TIME:'22:00'})
     await vi.advanceTimersByTimeAsync(1);expect(run).toHaveBeenCalledTimes(2);stopAgain()
   })
+})
+
+it('00:30汇总前一天，考勤不混入当天且缺日期名单去重',()=>{
+ const midnight=Date.parse('2026-09-15T00:30:00+08:00'),data=live();data.members=[{id:'a',name:'甲',group:'机械组',active:true,joinedAt:'2026-09-01'},{id:'b',name:'乙',group:'电控组',active:true,joinedAt:'2026-09-01'}];data.checkIns=[{id:'c1',memberIds:['a'],date:'2026-09-14',valid:true},{id:'c2',memberIds:['b'],date:'2026-09-15',valid:true}];const base={...data.tasks[0]!,memberIds:['a','b'],priority:1,status:'进行中' as const,deadline:undefined};data.tasks=[{...base,id:'one',title:'不该出现在缺日期名单的任务一'},{...base,id:'two',title:'不该出现在缺日期名单的任务二'},{...base,id:'doneYesterday',status:'已完成',completedAt:'2026-09-14T23:59:59+08:00'},{...base,id:'doneToday',status:'已完成',completedAt:'2026-09-15T00:01:00+08:00'}];const r=generateDailyReport(data,midnight);expect(r.date).toBe('2026-09-14');expect(r.text).toContain('【GIRT 今日任务日报】');expect(r.text).toContain('已打卡：1 人');expect(r.text).toContain('未打卡：1 人——乙');expect(r.text).toContain('今日完成：1');expect(r.text).toContain('2026-09-15 00:30:00');const names=r.text.split('⚠️ 未填写截止日期的负责人\n')[1]!.split('\n\n')[0];expect(names).toBe('甲、乙');
+})
+it('默认00:30调度、上线起始保护和跨年日报日期',async()=>{
+ vi.useFakeTimers();const before=Date.parse('2026-01-01T00:29:59+08:00');vi.setSystemTime(before);expect(reportSchedule({}).time).toBe('00:30');expect(isReportDue(before,'00:30')).toBe(false);expect(isReportDue(before+1000,'00:30')).toBe(true);expect(generateDailyReport(live(),before+1000).date).toBe('2025-12-31');const run=vi.fn(async()=>({status:'skipped',record:undefined}));const stop=startReportScheduler(run,{REPORT_ENABLED:'true',REPORT_SEND_TIME:'00:30',REPORT_START_AT:'2026-01-02T00:30:00+08:00'});await vi.advanceTimersByTimeAsync(60000);expect(run).not.toHaveBeenCalled();stop();vi.setSystemTime('2026-01-02T00:30:00+08:00');const resume=startReportScheduler(run,{REPORT_ENABLED:'true',REPORT_SEND_TIME:'00:30',REPORT_START_AT:'2026-01-02T00:30:00+08:00'});await vi.advanceTimersByTimeAsync(1);expect(run).toHaveBeenCalledTimes(1);resume();
 })

@@ -26,13 +26,13 @@ async function send(){
 }
 </script>
 <template><main class="report-admin">
-  <h1>RoboMaster 每日任务日报管理</h1><p>用于管理员预览、发送和核对日报。手动发送同样受每日防重复保护。</p>
+  <h1>GIRT 每日任务日报管理</h1><p>用于管理员预览、发送和核对日报。手动发送同样受每日防重复保护。</p>
   <label>管理员令牌 <input v-model="token" type="password" autocomplete="off" placeholder="输入服务器 ADMIN_REPORT_TOKEN" @input="ready=false" /></label>
-  <div class="report-actions"><button :disabled="busy || !token" @click="inspect">读取配置并预览今日日报</button><button :disabled="busy || !ready" @click="send">立即发送今日任务日报</button></div>
+  <div class="report-actions"><button :disabled="busy || !token" @click="inspect">读取配置并预览前一日日报</button><button :disabled="busy || !ready" @click="send">立即发送前一日任务日报</button></div>
   <p>{{ schedule }}</p><p role="status">{{ message }}</p>
   <p>若显示“结果待核对”，请先核对群内消息；系统不会盲目重发。</p>
   <pre>{{ preview || '通过管理员认证后，可在这里查看真实数据生成的日报。' }}</pre>
-  <h2>最近发送记录</h2><div class="report-history"><table><thead><tr><th>日期</th><th>方式</th><th>状态</th><th>生成时间</th><th>发送时间</th><th>错误</th></tr></thead><tbody><tr v-for="(r,i) in records" :key="i"><td>{{ r.date }}</td><td>{{ r.mode==='manual'?'手动':'自动' }}</td><td>{{ labels[r.state] || r.state }}</td><td>{{ r.generatedAt || '—' }}</td><td>{{ r.sentAt || '—' }}</td><td>{{ r.error || '—' }}</td></tr></tbody></table></div>
+  <h2>最近发送记录</h2><div class="report-history"><table><thead><tr><th>发送日期</th><th>方式</th><th>状态</th><th>生成时间</th><th>发送时间</th><th>错误</th></tr></thead><tbody><tr v-for="(r,i) in records" :key="i"><td>{{ r.date }}</td><td>{{ r.mode==='manual'?'手动':'自动' }}</td><td>{{ labels[r.state] || r.state }}</td><td>{{ r.generatedAt || '—' }}</td><td>{{ r.sentAt || '—' }}</td><td>{{ r.error || '—' }}</td></tr></tbody></table></div>
 </main></template>
 <style scoped>
 .report-admin{max-width:1200px;margin:40px auto;padding:24px;color:#e8f2ff;line-height:1.7}.report-admin h1,.report-admin h2{margin:20px 0}.report-admin label{display:block;margin-top:20px}.report-admin input{display:block;width:100%;padding:12px;background:#172a40;color:#fff;border:1px solid #65829a}.report-actions{display:flex;flex-wrap:wrap;gap:16px;margin:20px 0}.report-actions button{padding:12px 20px;background:#28596a;border:1px solid #76dccc;border-radius:4px}.report-admin pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:24px;background:#20364e;border:1px solid #577089}.report-history{overflow:auto}.report-admin table{width:100%;border-collapse:collapse;font-size:13px}.report-admin th,.report-admin td{padding:10px;border:1px solid #4c647e;text-align:left}.report-admin p{margin:12px 0}

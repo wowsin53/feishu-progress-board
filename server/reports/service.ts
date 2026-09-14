@@ -1,7 +1,7 @@
 import { resolve } from 'node:path'
 import { getDashboard } from '../dashboard'
 import { dateKey } from '../../src/utils/date'
-import { generateDailyReport } from './generate'
+import { generateDailyReport, reportDate } from './generate'
 import { ReportStore, type ReportMode } from './store'
 import { ReportDeliveryError, sendWebhook, webhookConfig } from './webhook'
 export class ReportService {
@@ -16,7 +16,7 @@ export class ReportService {
     try{
       const config=this.config()
       const report=await this.preview()
-      if(report.date!==date) throw new Error('REPORT_DATE_CHANGED')
+      if(dateKey()!==date || report.date!==reportDate()) throw new Error('REPORT_DATE_CHANGED')
       if(!this.store.update(date,'sending',null,Date.now(),report.generatedAt,attempt)) return {status:'skipped',record:this.store.get(date)}
       sending=true
       await this.deliver(report.text,config)
