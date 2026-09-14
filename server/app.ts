@@ -2,8 +2,10 @@ import express from 'express'
 import { timingSafeEqual } from 'node:crypto'
 import { resolve } from 'node:path'
 import { getDashboard } from './dashboard'
+import { reportRouter } from './reports/routes'
 export const app=express()
 app.disable('x-powered-by')
+app.use('/api/admin/reports',reportRouter)
 app.get('/healthz',(_req,res)=>{res.setHeader('Cache-Control','no-store');res.json({status:'ok'})})
 const same=(a:string,b:string)=>{ const aa=Buffer.from(a),bb=Buffer.from(b); return aa.length===bb.length && timingSafeEqual(aa,bb) }
 app.use((req,res,next)=>{

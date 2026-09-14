@@ -7,6 +7,7 @@ import { deriveDashboard, overdueDays } from '../utils/dashboard'
 import { dailyQuote } from '../utils/quotes'
 import { GROUP_CONFIG, groupLabel } from '../config/groups'
 import type { Task } from '../types/dashboard'
+import MissingDeadlinePanel from '../components/MissingDeadlinePanel.vue'
 import StatsCard from '../components/StatsCard.vue'
 import WallMemberCard from '../components/WallMemberCard.vue'
 import MemberCarousel from '../components/MemberCarousel.vue'
@@ -127,6 +128,7 @@ onBeforeUnmount(() => {
             <p v-if="!view.overdue.length" class="wall-empty green">暂无逾期任务</p>
             </AutoScroll>
           </section>
+          <MissingDeadlinePanel :tasks="view.missingDeadlines" :members="view.members" />
           <section class="wall-panel">
             <div class="wall-panel-title"><h2><Timer :size="30" />即将到期</h2><span class="orange mono">48H</span></div>
             <AutoScroll label="即将到期任务自动滚动">

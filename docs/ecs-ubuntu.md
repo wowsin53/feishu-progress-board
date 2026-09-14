@@ -1,3 +1,5 @@
+> 2026-09-14 更新：当前项目已实际部署到 ECS，使用独立 fs systemd 服务。实际地址、验证结果和维护命令见 [fs 部署报告](./fs-deployment-report.md)。本文其余内容保留为原 Docker 部署参考，不代表当前服务器运行方式。
+
 # 阿里云 ECS / Ubuntu 24.04 部署
 
 使用 Docker Compose：Node.js 后端与前端同域，Nginx 提供80端口。App Secret 只进入 Node 容器运行时，不进入前端构建。容器支持开机重启与日志轮换。当前没有 ECS 登录信息，文件已准备，尚未执行远程部署。

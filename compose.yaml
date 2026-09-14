@@ -6,6 +6,10 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
+      HOST: 0.0.0.0
+      REPORT_DB_PATH: /app/data/reports.sqlite
+    volumes:
+      - fs-reports:/app/data
     expose:
       - "3001"
     init: true
@@ -31,3 +35,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  fs-reports:

@@ -1,8 +1,15 @@
 import type { DashboardData, Group, MemberView, Task } from '../types/dashboard'
 import { dateKey, dayStart, shiftDay } from './date'
-const isActiveTask = (task: Task) => task.status !== '已完成' && task.status !== '已放弃'
-export const isOverdue = (task: Task, now = Date.now()) => isActiveTask(task) && !!task.deadline && Date.parse(task.deadline) < now
-export const taskStatus = (task: Task, now = Date.now()) => isOverdue(task, now) ? '已逾期' : task.status
+import { getTaskHealth, isActiveTask } from './task-health'
+export { getTaskHealth, isActiveTask } from './task-health'
+export const isOverdue = (task: Task, now = Date.now()) => getTaskHealth(task,now) === 'overdue'
+export const taskStatus = (task: Task, now = Date.now()) => {
+  const health=getTaskHealth(task,now)
+  if(health==='overdue') return '已逾期'
+  if(health==='missing_deadline') return '未填写截止日期'
+  if(health==='invalid_deadline') return '截止日期无效'
+  return task.status==='已逾期' ? '未完成' : task.status
+}
 export const overdueDays = (task: Task, now = Date.now()) => task.deadline ? Math.max(1, dayStart(dateKey(now)).diff(dayStart(dateKey(task.deadline)), 'day')) : 0
 export const pendingOrder = (a: Task, b: Task) => b.priority - a.priority || (Date.parse(a.deadline || '') || Infinity) - (Date.parse(b.deadline || '') || Infinity)
 export function deriveDashboard(data: DashboardData, group: Group | '全部成员', now = Date.now()) {
@@ -25,7 +32,8 @@ export function deriveDashboard(data: DashboardData, group: Group | '全部成�
   const ids = new Set(members.map(m => m.id))
   const tasks = data.tasks.filter(t => t.memberIds.some(id => ids.has(id)))
   const overdue = tasks.filter(t => isOverdue(t, now)).sort((a,b) => Date.parse(a.deadline!) - Date.parse(b.deadline!))
-  const upcoming = tasks.filter(t => isActiveTask(t) && t.deadline && Date.parse(t.deadline) >= now && Date.parse(t.deadline) <= now + 48 * 3600000).sort((a,b) => Date.parse(a.deadline!) - Date.parse(b.deadline!))
+  const upcoming = tasks.filter(t => getTaskHealth(t,now) === 'upcoming').sort((a,b) => Date.parse(a.deadline!) - Date.parse(b.deadline!))
+  const missingDeadlines = tasks.filter(t => getTaskHealth(t,now)==='missing_deadline').sort(pendingOrder)
   const absent = members.filter(m => !m.checkedIn).sort((a,b) => b.missedDays - a.missedDays)
-  return { members, tasks, overdue, upcoming, absent, summary: { checkedIn: members.length - absent.length, notCheckedIn: absent.length, unfinishedTasks: tasks.filter(isActiveTask).length, overdueTasks: overdue.length } }
+  return { members, tasks, overdue, upcoming, missingDeadlines, absent, summary: { checkedIn: members.length - absent.length, notCheckedIn: absent.length, unfinishedTasks: tasks.filter(isActiveTask).length, overdueTasks: overdue.length } }
 }

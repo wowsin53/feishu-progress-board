@@ -13,3 +13,9 @@ test-results/
 docs/*.png
 docs/*.jpg
 docs/*.jpeg
+
+data/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*

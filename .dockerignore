@@ -9,3 +9,9 @@ dist-server
 test-results
 playwright-report
 docs/*.png
+
+data/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
