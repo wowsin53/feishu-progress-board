@@ -15,3 +15,5 @@ data/
 *.sqlite-*
 *.db
 *.db-*
+
+dist-review/

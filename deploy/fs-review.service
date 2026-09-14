@@ -1,0 +1,26 @@
+[Unit]
+Description=fs New Task Review Worker
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+User=fs
+Group=fs
+WorkingDirectory=/opt/fs/current
+EnvironmentFile=/opt/fs/shared/.env
+# Disabled until record deletion permission and the full delivery chain are verified.
+Environment=REVIEW_ENABLED=false
+Environment=REVIEW_BASELINE_PATH=/opt/fs/data/review-baseline.json
+Environment=REVIEW_DB_PATH=/opt/fs/data/review.sqlite
+ExecStart=/opt/fs/runtime/bin/node /opt/fs/current/dist-review/index.js
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=60
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/fs/data /opt/fs/logs
+[Install]
+WantedBy=multi-user.target

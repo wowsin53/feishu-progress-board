@@ -245,3 +245,5 @@ tests/            核心逻辑与浏览器交互测试
 新增未填写截止日期独立告警和服务器端每日日报，发送时间为可配置的北京时间22:00。管理员可预览和手动发送，SQLite持久化发送记录并防止同日重复。配置与统计口径见 [日报说明](docs/daily-reports.md)。独立ECS部署使用 deploy/fs.service、deploy/fs.nginx.conf 和 deploy/install-release.sh。
 
 实际 ECS 部署地址：http://47.93.156.196/ 。[完整部署报告与维护说明](docs/fs-deployment-report.md)。生产后端构建后运行 `npm run test:production` 检查。
+
+[新增任务填写审核说明](docs/task-review.md)：原生飞书审核与填写人提醒已启用；应用删除权限不足，自动删除尚未启用。

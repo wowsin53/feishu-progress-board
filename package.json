@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "concurrently -k -n API,WEB \"tsx watch server/index.ts\" \"vite --host 127.0.0.1\"",
-    "build": "vue-tsc --noEmit && vite build && tsup server/index.ts --format esm --out-dir dist-server --no-splitting",
+    "build": "vue-tsc --noEmit && vite build && tsup server/index.ts --format esm --out-dir dist-server --no-splitting && tsup server/review/index.ts --format esm --out-dir dist-review --no-splitting",
     "preview": "vite preview --host 127.0.0.1",
     "start": "node dist-server/index.js",
     "test": "vitest run",
