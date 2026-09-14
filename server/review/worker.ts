@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync,chmodSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { creator,decisionFor,fingerprint,linkedIds,reminder,type RawRecord } from './policy'
+import { creator,decisionFor,fingerprint,linkedIds,text,type RawRecord } from './policy'
 export interface Baseline{base:string;table:string;since:string;recordIds:string[]}
 interface Entry{id:string;hash:string;changed:number;state:string;backup:string|null;error:string|null}
 export class ReviewStore {
@@ -15,7 +15,7 @@ export class ReviewStore {
 export interface ReviewClient {list():Promise<RawRecord[]>;get(id:string):Promise<RawRecord|null>;remove(id:string):Promise<void>}
 export class ReviewWorker {
   private old:Set<string>
-  constructor(private api:ReviewClient,public store:ReviewStore,private baseline:Baseline,private notify:(text:string)=>Promise<void>,private now=Date.now){if(!Number.isFinite(Date.parse(baseline.since))||!baseline.recordIds.length)throw new Error('REVIEW_BASELINE_REQUIRED');this.old=new Set(baseline.recordIds)}
+  constructor(private api:ReviewClient,public store:ReviewStore,private baseline:Baseline,private now=Date.now){if(!Number.isFinite(Date.parse(baseline.since))||!baseline.recordIds.length)throw new Error('REVIEW_BASELINE_REQUIRED');this.old=new Set(baseline.recordIds)}
   private safeError(e:unknown){return e instanceof Error&&/^(REVIEW_[A-Z0-9_]+|WEBHOOK_[A-Z0-9_]+)$/.test(e.message)?e.message:'REVIEW_OPERATION_FAILED'}
   async tick(){
     // Never retry a possibly delivered notification. Resolve interrupted deletes by reading first.
@@ -27,18 +27,17 @@ export class ReviewWorker {
     for(const r of rows){
       if(this.old.has(r.record_id))continue
       const created=Number(r.fields['填写时间（系统）']);if(!Number.isFinite(created)||created<Date.parse(this.baseline.since)||created>now)continue
-      const entry=this.store.observe(r,now);if(entry.state!=='observed'||now-created<600000||now-entry.changed<300000)continue
+      const entry=this.store.observe(r,now);if(entry.state!=='observed')continue
       const d=decisionFor(r);if(!d)continue
       if(d.verdict==='pass'){this.store.set(r.record_id,'passed');continue}
       if(d.verdict==='uncertain'||referenced.has(r.record_id)||linkedIds(r.fields['父记录']).length||!creator(r)){this.store.set(r.record_id,'manual','REVIEW_CONTEXT_REQUIRES_CHECK');continue}
       try{
-        const fresh=await this.api.get(r.record_id);if(!fresh||fingerprint(fresh)!==entry.hash||!decisionFor(fresh))continue
-        // Persist original record before either side effect; alert must succeed before deletion.
-        this.store.set(r.record_id,'notification_sending',null,fresh)
-        await this.notify(reminder(fresh,d))
-        this.store.set(r.record_id,'notified')
+        if(text(r.fields['审核提醒状态'])!=='已发送')continue
+        const fresh=await this.api.get(r.record_id);if(!fresh||fingerprint(fresh)!==entry.hash||decisionFor(fresh)?.verdict!=='reject'||text(fresh.fields['审核提醒状态'])!=='已发送')continue
+        // Native workflow already delivered the private reminder. Persist a complete backup before deletion.
+        this.store.set(r.record_id,'notified',null,fresh)
         const latest=await this.api.get(r.record_id);if(!latest){this.store.set(r.record_id,'deleted');continue}
-        if(fingerprint(latest)!==entry.hash){this.store.observe(latest,now);continue}
+        if(fingerprint(latest)!==entry.hash||text(latest.fields['审核提醒状态'])!=='已发送'||decisionFor(latest)?.verdict!=='reject'){this.store.observe(latest,now);continue}
         // Recheck relations immediately before deletion, protecting newly linked child records.
         const current=await this.api.list();if(current.some(x=>linkedIds(x.fields['父记录']).includes(r.record_id))){this.store.set(r.record_id,'manual','REVIEW_LINKED_CHILDREN');continue}
         this.store.set(r.record_id,'delete_pending')

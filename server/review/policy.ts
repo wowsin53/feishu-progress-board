@@ -3,7 +3,7 @@ export interface RawRecord { record_id:string; fields:Record<string,unknown> }
 export const reviewFields={task:'任务描述',result:'最终效果',difficulty:'遇到的困难',solution:'解决措施'} as const
 export function text(v:unknown):string { if(typeof v==='string')return v; if(Array.isArray(v))return v.map(x=>typeof x==='string'?x:x?.text||'').join('');return '' }
 export function snapshot(r:RawRecord){return Object.fromEntries(Object.entries(reviewFields).map(([k,f])=>[k,text(r.fields[f]).replace(/\r\n/g,'\n')])) as Record<keyof typeof reviewFields,string>}
-export function fingerprint(r:RawRecord){const fields=Object.fromEntries(Object.entries(r.fields).filter(([k])=>k!=='填写审核结果').sort(([a],[b])=>a.localeCompare(b)));return createHash('sha256').update(JSON.stringify(fields)).digest('hex')}
+export function fingerprint(r:RawRecord){const fields=Object.fromEntries(Object.entries(r.fields).filter(([k])=>!['填写审核结果','审核提醒状态'].includes(k)).sort(([a],[b])=>a.localeCompare(b)));return createHash('sha256').update(JSON.stringify(fields)).digest('hex')}
 export function linkedIds(v:unknown):string[]{if(!Array.isArray(v))return [];return v.flatMap(x=>typeof x==='string'?[x]:typeof x?.record_id==='string'?[x.record_id]:[])}
 export interface Decision {version:1;verdict:'pass'|'reject'|'uncertain';snapshot:Record<string,string>;issues:{rule:string;field:string;evidence:string;suggestion:string}[];advice:string}
 export function decisionFor(r:RawRecord):Decision|null {
