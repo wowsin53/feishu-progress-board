@@ -48,3 +48,22 @@ describe('统一五组与历史分类兼容',()=>{
     expect(data.warnings.join('')).toContain('组别待确认')
   })
 })
+
+it('通讯录归组支持仅有跨组任务的成员，共同任务在双方显示且基地只计一次',()=>{
+ const electrical={id:'e',name:'同名成员'},mechanical={id:'m',name:'同名成员'}
+ const rows=[{record_id:'joint',fields:{任务描述:'跨组安装测试',任务负责人:[electrical],任务执行人:[electrical,mechanical],进展:'进行中',组别:['电控','机械']}}]
+ const data=normalizeDiscovered(rows,schema,[],undefined,{e:'电控组',m:'机械组'})
+ expect(data.members.map(m=>m.group)).toEqual(['电控组','机械组'])
+ expect(data.tasks[0]?.memberIds).toEqual(['e','m'])
+ const all=deriveDashboard(data,'全部成员')
+ expect(all.summary.unfinishedTasks).toBe(1)
+ expect(all.members.every(m=>m.pending.some(t=>t.id==='joint'))).toBe(true)
+ for(const group of ['电控组','机械组'] as const)expect(deriveDashboard(data,group).summary.unfinishedTasks).toBe(1)
+})
+it('人员表优先于补充归组配置，未核实人员仍待分组',()=>{
+ const rows=[{record_id:'joint',fields:{任务描述:'联调',任务负责人:[{id:'e',name:'甲'}],进展:'进行中',组别:['机械','电控']}}]
+ expect(normalizeDiscovered(rows,schema).members[0]?.group).toBeNull()
+ const memberTable:TableSchema={table_id:'members',name:'成员',fields:['成员ID','姓名','组别'].map(field_name=>({field_name,type:1}))}
+ const data=normalizeDiscovered(rows,schema,[{record_id:'member',fields:{成员ID:'e',姓名:'甲',组别:'视觉组'}}],memberTable,{e:'电控组'})
+ expect(data.members[0]?.group).toBe('视觉组')
+})

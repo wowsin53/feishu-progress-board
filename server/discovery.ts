@@ -42,7 +42,7 @@ const personKey = (value: unknown): string => {
   const object = value && typeof value === 'object' ? value as Record<string,unknown> : {}
   return fieldText(object.id) || 'name:' + fieldText(object.name || object.text || value)
 }
-export function normalizeDiscovered(taskRows: FeishuRecord[], taskTable: TableSchema, memberRows: FeishuRecord[] = [], memberTable?: TableSchema): DashboardData {
+export function normalizeDiscovered(taskRows: FeishuRecord[], taskTable: TableSchema, memberRows: FeishuRecord[] = [], memberTable?: TableSchema, directoryGroups: Readonly<Record<string, Group>> = {}): DashboardData {
   const incompleteTasks: NonNullable<DashboardData['incompleteTasks']> = []
   const tasks = remap(taskRows, taskTable, taskAliases).filter(row => {
     // Feishu creates empty rows with a default start date; only skip otherwise empty rows.
@@ -103,7 +103,7 @@ export function normalizeDiscovered(taskRows: FeishuRecord[], taskTable: TableSc
       // Prefer tasks the person owns; assisting another group must not reclassify them.
       // Blank and multi-group tasks provide no unique personnel-group evidence.
       const candidates = member.ownedGroups.size ? member.ownedGroups : member.groups
-      const group = candidates.size === 1 ? [...candidates][0] : null
+      const group = directoryGroups[id] ?? (candidates.size === 1 ? [...candidates][0] : null)
       members.push({record_id:id,fields:{成员ID:id,姓名:member.name,组别:group,是否在队:true,加入时间:shiftDay(dateKey(),-7)}})
     }
     warnings.push('成员由任务负责人和执行人提取，未分配任务的成员暂不计入；打卡为虚拟数据')

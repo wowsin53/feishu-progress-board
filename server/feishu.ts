@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { configuredMemberGroups } from './member-groups'
 import type { DashboardData } from '../src/types/dashboard'
 import { normalizeRecords, type FeishuRecord } from './normalize'
 import { normalizeDiscovered, parseBaseLink, selectTables, type TableSchema, withVirtualCheckIns } from './discovery'
@@ -60,7 +61,7 @@ export function readFeishu(): Promise<DashboardData> {
       const selected = selectTables(schemas,process.env.FEISHU_TASKS_TABLE_ID || linked?.tableId,process.env.FEISHU_MEMBERS_TABLE_ID)
       const tasks = await records(selected.task.table_id)
       const members = selected.member ? await records(selected.member.table_id) : []
-      return withVirtualCheckIns(normalizeDiscovered(tasks,selected.task,members,selected.member))
+      return withVirtualCheckIns(normalizeDiscovered(tasks,selected.task,members,selected.member,configuredMemberGroups()))
     }
     const members=await records(process.env.FEISHU_MEMBERS_TABLE_ID!)
     const tasks=await records(process.env.FEISHU_TASKS_TABLE_ID!)
