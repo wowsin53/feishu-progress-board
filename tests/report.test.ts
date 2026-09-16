@@ -41,6 +41,7 @@ describe('真实数据日报生成',()=>{
     const data=live();data.tasks[1]!.status='进行中';data.tasks[1]!.deadline=undefined
     const report=generateDailyReport(data,now)
     expect(report.date).toBe('2026-09-13')
+    expect(report.text).toMatch(/查看完整任务看板：http:\/\/47\.93\.156\.196\/$/)
     for(const text of ['GIRT','任务总数：48','运营组','操作手组','未填写截止日期','虚拟演示数据']) expect(report.text).toContain(text)
     expect(report.text).toContain('当前有效任务累计完成占比')
     expect(report.text.split('⚠️ 未填写截止日期的负责人')[1]!.split('今日重点：')[0]).not.toContain(data.tasks[1]!.title)
@@ -52,6 +53,7 @@ describe('真实数据日报生成',()=>{
     data.tasks=Array.from({length:300},(_,i)=>({...data.tasks[0]!,id:'long'+i,title:'很长的任务名称'.repeat(50),status:'进行中' as const,deadline:undefined,priority:3}))
     const text=generateDailyReport(data,now).text
     expect(Buffer.byteLength(text)).toBeLessThanOrEqual(18000)
+    expect(text).toContain('查看完整任务看板：http://47.93.156.196/');
     expect(text).toContain('任务总数：300');expect(text).toContain('另有')
   })
 })
