@@ -8,7 +8,8 @@ export function generateDailyReport(data:DashboardData, now=Date.now()) {
   if(data.source!=='feishu') throw new Error('REPORT_REQUIRES_LIVE_TASKS')
   const view=deriveDashboard(data,'全部成员',now), date=reportDate(now)
   const attendance=deriveDashboard(data,'全部成员',dayStart(date).endOf('day').valueOf())
-  const missingIds=new Set(view.missingDeadlines.flatMap(t=>t.memberIds))
+  const missingDeadlines=view.missingDeadlines.filter(t=>t.status!=='未开始')
+  const missingIds=new Set(missingDeadlines.flatMap(t=>t.memberIds))
   const missingNames=[...new Set(view.members.filter(m=>missingIds.has(m.id)).map(m=>m.name))]
   const absentNames=attendance.absent.map(m=>plain(m.name)).join('、')
   const completed=view.tasks.filter(t=>t.status==='已完成')
@@ -41,9 +42,9 @@ export function generateDailyReport(data:DashboardData, now=Date.now()) {
       list('🔴 已逾期任务',view.overdue,t=>' —— 已逾期 '+overdueDays(t,now)+' 天'),' ',
       list('🟠 即将到期',view.upcoming,t=>' —— 剩余 '+Math.max(1,Math.ceil((Date.parse(t.deadline!)-now)/3600000))+' 小时'),'',
       '⚠️ 未填写截止日期的负责人',
-      missingNames.length?missingNames.map(plain).join('、'):'✅ 所有未完成任务均已填写截止日期','',
+      missingNames.length?missingNames.map(plain).join('、'):'✅ 所有非待开始的未完成任务均已填写截止日期','',
       ...(data.incompleteTasks?.length ? ['待补充信息：'+data.incompleteTasks.length+' 条，未计入任务统计；请完善负责人或状态。'] : []),
-      '今日重点：'+view.missingDeadlines.length+' 项任务未填写截止日期，'+view.overdue.length+' 项已逾期，'+view.upcoming.length+' 项将在48小时内到期，请对应负责人及时处理。',
+      '今日重点：'+missingDeadlines.length+' 项任务未填写截止日期，'+view.overdue.length+' 项已逾期，'+view.upcoming.length+' 项将在48小时内到期，请对应负责人及时处理。',
     ].join('\n')
   }
   // One message keeps a daily send atomic. Bound details by UTF-8 bytes, not characters.

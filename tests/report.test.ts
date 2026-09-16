@@ -48,7 +48,7 @@ describe('真实数据日报生成',()=>{
   })
   it('无缺日期显示正常提示；超长日报限制详情但保持总数',()=>{
     const data=live()
-    expect(generateDailyReport(data,now).text).toContain('所有未完成任务均已填写截止日期')
+    expect(generateDailyReport(data,now).text).toContain('所有非待开始的未完成任务均已填写截止日期')
     data.tasks=Array.from({length:300},(_,i)=>({...data.tasks[0]!,id:'long'+i,title:'很长的任务名称'.repeat(50),status:'进行中' as const,deadline:undefined,priority:3}))
     const text=generateDailyReport(data,now).text
     expect(Buffer.byteLength(text)).toBeLessThanOrEqual(18000)
@@ -130,4 +130,27 @@ it('00:30汇总前一天，考勤不混入当天且缺日期名单去重',()=>{
 })
 it('默认00:30调度、上线起始保护和跨年日报日期',async()=>{
  vi.useFakeTimers();const before=Date.parse('2026-01-01T00:29:59+08:00');vi.setSystemTime(before);expect(reportSchedule({}).time).toBe('00:30');expect(isReportDue(before,'00:30')).toBe(false);expect(isReportDue(before+1000,'00:30')).toBe(true);expect(generateDailyReport(live(),before+1000).date).toBe('2025-12-31');const run=vi.fn(async()=>({status:'skipped',record:undefined}));const stop=startReportScheduler(run,{REPORT_ENABLED:'true',REPORT_SEND_TIME:'00:30',REPORT_START_AT:'2026-01-02T00:30:00+08:00'});await vi.advanceTimersByTimeAsync(60000);expect(run).not.toHaveBeenCalled();stop();vi.setSystemTime('2026-01-02T00:30:00+08:00');const resume=startReportScheduler(run,{REPORT_ENABLED:'true',REPORT_SEND_TIME:'00:30',REPORT_START_AT:'2026-01-02T00:30:00+08:00'});await vi.advanceTimersByTimeAsync(1);expect(run).toHaveBeenCalledTimes(1);resume();
+})
+
+it('日报缺日期排除待开始，名单去重且保留看板原口径',()=>{
+ const data=live()
+ data.members=Array.from({length:4},(_,i)=>({id:'m'+i,name:'成员'+i,group:'机械组' as const,active:true,joinedAt:'2026-09-01'}))
+ const base={...data.tasks[0]!,deadline:undefined,priority:1}
+ data.tasks=[
+  {...base,id:'pending',memberIds:['m0'],status:'未开始'},
+  {...base,id:'running',memberIds:['m1'],status:'进行中'},
+  {...base,id:'review',memberIds:['m1','m2'],status:'待验收'},
+  {...base,id:'stalled',memberIds:['m2'],status:'已停滞'},
+  {...base,id:'done',memberIds:['m3'],status:'已完成'},
+  {...base,id:'abandoned',memberIds:['m3'],status:'已放弃'},
+ ]
+ const report=generateDailyReport(data,now).text
+ expect(report.split('⚠️ 未填写截止日期的负责人\n')[1]!.split('\n\n')[0]).toBe('成员1、成员2')
+ expect(report).toContain('今日重点：3 项任务未填写截止日期')
+ expect(report).toContain('未开始：1')
+ expect(deriveDashboard(data,'全部成员',now).missingDeadlines).toHaveLength(4)
+ data.tasks=data.tasks.filter(t=>t.status==='未开始')
+ const onlyPending=generateDailyReport(data,now).text
+ expect(onlyPending).toContain('所有非待开始的未完成任务均已填写截止日期')
+ expect(onlyPending).toContain('今日重点：0 项任务未填写截止日期')
 })

@@ -11,3 +11,24 @@
 .member-card:hover { background:#304c68; border-color:var(--cyan); }
 .member-card .more-tasks { font-size:13px; }
 .group-filter { flex-wrap:wrap; }
+
+/* Touch layout uses the existing interactive dashboard instead of shrinking a 4K canvas. */
+.compact-missing-deadlines { margin-top: 16px; border-top-color: var(--orange); }
+.compact-missing-deadlines .alert-task { overflow-wrap: anywhere; }
+@media (max-width: 1024px) {
+  .dashboard-shell .workspace { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-shell .group-filter button,
+  .dashboard-shell .icon-button { min-height: 44px; min-width: 44px; }
+  .dashboard-shell .member-pagination { flex-wrap: wrap; gap: 12px; }
+  .dashboard-shell .member-card { min-width: 0; }
+  .dashboard-shell .panel-scroll { max-height: none; }
+  .dashboard-shell .exception-area { min-width: 0; }
+  .dashboard-shell .compact-missing-deadlines { margin-top: 0; }
+  .dashboard-shell .data-warning { overflow-wrap: anywhere; }
+}
+@media (max-width: 380px) {
+  .dashboard-header { height: auto; min-height: 98px; flex-wrap: wrap; padding: 16px 0; }
+  .dashboard-header .header-right { width: 100%; justify-content: space-between; }
+  .overview-label { flex-wrap: wrap; }
+  .modal-header { flex-wrap: wrap; gap: 12px; }
+}
