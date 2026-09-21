@@ -21,3 +21,4 @@ data/
 *.db-*
 
 dist-review/
+dist-review-v2/
