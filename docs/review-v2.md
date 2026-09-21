@@ -69,7 +69,8 @@ deleted=false notificationStatus=LOG_ONLY
 ## 旧工作流
 
 用户2026-09-20追加明确要求删除 wkfWw0OMEynPaQaz（RoboMaster 新增任务填写审核）。
-已备份到本地被Git忽略的 data/review-backups/legacy-workflow-20260920.json。
-当前CLI无workflow-delete；base-block接口查询报缺少base:block:read / base:block:delete权限，尚未删除、尚未停用。
-需补充资源目录相关权限后确认目标并删除，或由用户在飞书界面删除。恢复需按备份重建工作流（不保证复用旧ID）。
+2026-09-21 用户完成 base:block:read / base:block:delete 授权后，已通过 base-block-delete 删除指定工作流。
+删除返回 deleted=true；base-block-list 与 workflow-list 均复查 total=0。
+删除前最新配置保存在本地被Git忽略的 data/review-backups/legacy-workflow-before-delete-20260921.json，另保留前日备份。
+恢复需按备份重建工作流（不保证复用旧ID）。新审核尚未接入，当前无自动新增审核。
 日报、看板与该工作流无直接依赖；删除旧流程到新流程联调间会存在审核空档。
