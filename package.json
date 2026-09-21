@@ -13,7 +13,8 @@
     "start": "node dist-server/index.js",
     "test": "vitest run",
     "test:ui": "playwright test",
-    "test:production": "node scripts/smoke-production.mjs"
+    "test:production": "node scripts/smoke-production.mjs",
+    "review:ai-check": "tsx scripts/review-ai-check.ts"
   },
   "dependencies": {
     "axios": "^1.8.4",

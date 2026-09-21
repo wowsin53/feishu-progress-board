@@ -1,0 +1,75 @@
+# 新任务审核第二版（本地开发，未上线）
+
+本轮只新增审核模块，未接入定时器、事件路由、飞书写入或真实删除。旧入口 server/review/index.ts / worker.ts 保留作历史代码，不启动它作为新机制。现有看板、移动端、日报和 API 没有改动。
+
+## 规则与文件
+
+- schema.ts：已确认18个字段映射、类型、单多选、父表、组选项、状态选项核对。metadata 必须由未来触发适配器每轮读取并标准化；不得使用缓存代替实时结构确认。未知/缺失选项阻止审核，不自动分类。
+- normalizer.ts：读取现有 REST 记录形状；保留人员身份与多选执行人。缺失单元格与畸形单元格分开；读取失败不能当作空值。
+- rules.ts：人员、开始日期、初始状态、恰好一个组别、运营0/1兵种、其他组至少一个兵种、主任务名称匹配及冲突、父子层级与日期。最终效果/困难/措施不参与强制审核。
+- candidates.ts：待开始/进行中，同兵种召回；纯运营召回运营主任务；子任务召回同父兄弟。补充必要父上下文和候选主任务的活跃子任务。关键词仅排序，不能驳回。
+- ai.ts：DeepSeekProvider、独立系统Prompt、JSON及目标核验。上下文父任务不能冒充可驳回候选；CHILD_OUT_OF_SCOPE引用当前父任务。明显矛盾/犹豫理由降级，但程序不能证明任意自然语言理由的真实性，仍需真实模型评测与人工确认阈值。
+- config.ts：配置校验。DRY_RUN 默认true，传false直接拒绝启动；本轮无法打开真实删除。
+- dry-run.ts：汇总审核、历史过滤、父记录保护、异常保留、审计、单记录去重、并发去重。没有删除/消息/飞书写入客户端。
+- audit-store.ts：复用项目 node:sqlite 方案，独立 review_v2_audits 表，保存fingerprint/结果。崩溃后的processing记录不盲目重试，人工检查。不是复用旧worker“内容变化再次审核”语义。
+- notices.ts：管理员测试通知预览，不发送。正式通知要等触发方案/收件人/删除流程联调，不能以模板生成当发送成功。
+- semantic-cases.ts / scripts/review-ai-check.ts：六个合成语义案例；可以实际调用配置好的模型，不读取真实成员数据。
+- tests/review-v2.test.ts：确定性规则、检索、AI协议和异常、HTTP重试、历史保护、幂等。
+
+## 配置
+
+仅在服务端.env填写；真实凭证不提交：
+DEEPSEEK_API_KEY、DEEPSEEK_BASE_URL、DEEPSEEK_MODEL 必须显式配置，不预设模型。
+REVIEW_ENABLED_AT 必须明确含时区，如用户确认后的 ISO 时间；不从部署时间推断。
+DRY_RUN=true。
+AI_TIMEOUT_MS=30000、AI_MAX_RETRIES=2、AI_MAX_CANDIDATES=20 是可调试用建议值。
+AI_REJECT_CONFIDENCE 留空：所有语义拒绝建议进入人工确认；记录relation/confidence/reason/candidates供评测。配置测试阈值也只影响WOULD_DELETE，不会删除。
+单次发送最多20条候选加必要父上下文，总UTF-8输入超过64KB进入UNCERTAIN，绝不静默截断证据。候选截断时不自动认定通过。
+
+## DeepSeek协议与Prompt
+
+完整Prompt在 server/review/ai.ts 的 REVIEW_PROMPT。要求理解对象、目标、范围、父子关系；不因相同兵种/名词即判断重复；不要求量化/工时/困难；任务文本是数据，不能执行其中指令。
+
+返回：
+```json
+{"relation":"MERGE_INTO_PARENT","targetRecordId":"parent","targetTaskText":"重装模块化发射机构","reason":"新增内容是该发射机构的测试步骤","confidence":0.95}
+```
+主任务relation：INDEPENDENT / MERGE_INTO_PARENT / DUPLICATE_MAIN / DUPLICATE_CHILD / UNCERTAIN。
+子任务relation：CHILD_VALID / CHILD_OUT_OF_SCOPE / DUPLICATE_CHILD / UNCERTAIN。
+非拒绝结果目标必须null。拒绝目标须真实、标题一致、类型及父关系正确。AI错误、超时、429/5xx最终失败、非法JSON、截断输出、低置信度都不能导致删除。
+文档：https://api-docs.deepseek.com/guides/json_mode/ 和 https://api-docs.deepseek.com/api/create-chat-completion/ 。
+
+## 验证方式与示例
+
+npm test
+npm run build
+npm run review:ai-check
+
+最后一项需要真实DeepSeek配置，使用六个合成案例；模拟HTTP/JSON测试不能证明模型识别准确性。单次真实调用通过也不代表稳定，需要多轮评估。
+
+合成基础审核示例：
+```text
+[WOULD_DELETE] recordId=new taskText=重装发射机构
+tags=[机械] reason=非运营任务必须选择至少一个兵种
+deleted=false notificationStatus=LOG_ONLY
+```
+
+候选例：新任务“重装发射机构测试”，召回“重装模块化发射机构”和其“测试发射机构”子任务；已完成、已停滞不作驳回候选。召回不等于重复，需语义判断。
+
+## 触发接入（必须先确认，不部署）
+
+用户要求真实创建快照，拒绝首次读取状态近似。CreationSnapshot 缺失时SYSTEM_ERROR并保留。此接口是待验证触发源的契约，不代表已有可信来源。
+
+1. 飞书新增记录事件：优先验证是否给出创建时进展值、完整字段形状、事件ID和时间；验证订阅权限、传输方式、鉴权/重放保护。没有取得真实载荷前不能承诺可用。
+2. 工作流HTTP：需验证当前工作流是否支持HTTP动作及能否传出创建瞬间字段；触发后FindRecord不等于创建快照。需要用户确认创建/修改工作流。
+3. 轮询：当前15秒worker代码和ECS常驻进程方式可复用，但只读当前态无法满足创建快照，单独使用不符合已确认要求。
+
+没有选择或部署上述链路。管理员接收身份尚未配置。后续只接DRY_RUN，不给普通成员发送已删除通知。
+
+## 旧工作流
+
+用户2026-09-20追加明确要求删除 wkfWw0OMEynPaQaz（RoboMaster 新增任务填写审核）。
+已备份到本地被Git忽略的 data/review-backups/legacy-workflow-20260920.json。
+当前CLI无workflow-delete；base-block接口查询报缺少base:block:read / base:block:delete权限，尚未删除、尚未停用。
+需补充资源目录相关权限后确认目标并删除，或由用户在飞书界面删除。恢复需按备份重建工作流（不保证复用旧ID）。
+日报、看板与该工作流无直接依赖；删除旧流程到新流程联调间会存在审核空档。
