@@ -174,3 +174,11 @@ describe('DeepSeek HTTP contract', () => {
     }
   })
 })
+
+ it('preserves ambiguous semantic decisions even at a high confidence and configured rejection threshold', async () => {
+  const provider = { evaluate: vi.fn().mockResolvedValue({ relation: 'UNCERTAIN', targetRecordId: null, targetTaskText: null, reason: '仅凭标题无法区分目标重复与局部改造', confidence: 0.99 }) }
+  const result = await new DryRunReviewer({ ...config(), rejectConfidence: 0.8 }, provider, new MemoryAuditStore(), () => {}).run(input())
+  expect(result.decision).toBe('MANUAL_REVIEW_REQUIRED')
+  expect(result.wouldDelete).toBe(false)
+  expect(result.deleted).toBe(false)
+ })

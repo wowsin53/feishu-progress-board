@@ -13,7 +13,7 @@
 - dry-run.ts：汇总审核、历史过滤、父记录保护、异常保留、审计、单记录去重、并发去重。没有删除/消息/飞书写入客户端。
 - audit-store.ts：复用项目 node:sqlite 方案，独立 review_v2_audits 表，保存fingerprint/结果。崩溃后的processing记录不盲目重试，人工检查。不是复用旧worker“内容变化再次审核”语义。
 - notices.ts：管理员测试通知预览，不发送。正式通知要等触发方案/收件人/删除流程联调，不能以模板生成当发送成功。
-- semantic-cases.ts / scripts/review-ai-check.ts：六个合成语义案例；可以实际调用配置好的模型，不读取真实成员数据。
+- semantic-cases.ts / scripts/review-ai-check.ts：七个合成语义案例；可以实际调用配置好的模型，不读取真实成员数据。
 - tests/review-v2.test.ts：确定性规则、检索、AI协议和异常、HTTP重试、历史保护、幂等。
 
 ## 配置
@@ -44,8 +44,9 @@ AI_REJECT_CONFIDENCE 留空：所有语义拒绝建议进入人工确认；记�
 npm test
 npm run build
 npm run review:ai-check
+npm run review:ai-check -- 3  # 重复三轮（1至5轮）
 
-最后一项需要真实DeepSeek配置，使用六个合成案例；模拟HTTP/JSON测试不能证明模型识别准确性。单次真实调用通过也不代表稳定，需要多轮评估。
+最后一项需要真实DeepSeek配置，使用七个合成案例；模拟HTTP/JSON测试不能证明模型识别准确性。单次真实调用通过也不代表稳定，需要多轮评估。
 
 合成基础审核示例：
 ```text
@@ -74,3 +75,11 @@ deleted=false notificationStatus=LOG_ONLY
 删除前最新配置保存在本地被Git忽略的 data/review-backups/legacy-workflow-before-delete-20260921.json，另保留前日备份。
 恢复需按备份重建工作流（不保证复用旧ID）。新审核尚未接入，当前无自动新增审核。
 日报、看板与该工作流无直接依赖；删除旧流程到新流程联调间会存在审核空档。
+
+## 2026-09-21 语义边界确认与实测
+
+用户选择A：仅凭标题无法明确区分重复与并入时，返回UNCERTAIN，保留任务并进入人工确认。Prompt已要求不得把改进/优化自行视为子任务或重复；原模块化改进案例预期相应改为UNCERTAIN，同时新增目标与范围明确相同的DUPLICATE_MAIN案例。
+
+七个合成案例连续三轮真实DeepSeek调用，21/21符合预期，全部通过结构化校验。边界不明案例三轮均为UNCERTAIN；清晰重复案例三轮均为DUPLICATE_MAIN。104项单元测试与Vue/TypeScript类型检查通过。新增回归测试保证UNCERTAIN即使confidence=0.99且配置拒绝阈值0.8也保留记录。
+
+这是有限合成样本测试，不代表真实任务上的稳定性保证或上线验收；未设置正式删除阈值、未部署、未发送正式通知、未删除任务记录。
