@@ -1,3 +1,5 @@
+import { restFields } from '../server/review/rest-fields'
+import { ReviewPoller } from '../server/review/polling'
 import { describe, it, expect, vi } from 'vitest'
 import axios from 'axios'
 import { normalizeRecord } from '../server/review/normalizer'
@@ -182,3 +184,92 @@ describe('DeepSeek HTTP contract', () => {
   expect(result.wouldDelete).toBe(false)
   expect(result.deleted).toBe(false)
  })
+
+describe('creation-time polling', () => {
+  const config = reviewConfig({ REVIEW_ENABLED_AT: new Date(t).toISOString() })
+  const independent = { relation: 'INDEPENDENT', targetRecordId: null, targetTaskText: null, reason: '范围独立', confidence: 0.99 }
+  function setup(rows: RawRecord[], schema = metadata) {
+    const store = new MemoryAuditStore(), evaluate = vi.fn().mockResolvedValue(independent), log = vi.fn()
+    const api = { list: vi.fn().mockResolvedValue(rows), fields: vi.fn().mockResolvedValue(schema), get: vi.fn(async (id: string) => rows.find(r => r.record_id === id) ?? null) }
+    const reviewer = new DryRunReviewer(config, { evaluate }, store, log)
+    const poller = new ReviewPoller(api, reviewer, store, 'table', t, log, () => t + 1000)
+    return { store, evaluate, log, api, reviewer, poller }
+  }
+  it('uses system time cutoff, not task start date; skips history and survives subsequent status changes', async () => {
+    const current = raw(), old = raw({ '填写时间（系统）': t - 1, 开始日期: t + 5000 }, 'old')
+    const s = setup([old, current])
+    await s.poller.tick()
+    expect(s.store.get('table:old')).toBeUndefined()
+    expect(s.store.get('table:new')?.result?.decision).toBe('PASS')
+    expect(s.store.get('table:new')?.result?.observation?.source).toBe('poll_first_read')
+    current.fields.进展 = '已完成'
+    const restarted = new ReviewPoller(s.api, s.reviewer, s.store, 'table', t, s.log, () => t + 2000)
+    await restarted.tick()
+    expect(s.evaluate).toHaveBeenCalledTimes(1)
+    expect(s.store.get('table:new')?.result?.decision).toBe('PASS')
+  })
+  it.each(['已完成', '已放弃'])('keeps first-seen %s for manual review without guessing initial state', async status => {
+    const s = setup([raw({ 进展: status, 组别: ['机械'] })])
+    await s.poller.tick()
+    expect(s.store.get('table:new')?.result?.decision).toBe('MANUAL_REVIEW_REQUIRED')
+    expect(s.store.get('table:new')?.result?.wouldDelete).toBe(false)
+    expect(s.evaluate).not.toHaveBeenCalled()
+  })
+  it('does not claim records when schema changes or the API is incomplete', async () => {
+    const s = setup([raw()], metadata.filter(f => f.name !== fields.createdAt))
+    await s.poller.tick()
+    expect(s.api.list).not.toHaveBeenCalled()
+    s.api.fields.mockResolvedValue(metadata)
+    s.api.list.mockRejectedValue(new Error('REVIEW_INCOMPLETE_PAGE'))
+    await s.poller.tick()
+    expect(s.store.get('table:new')).toBeUndefined()
+  })
+  it('does not overlap polling runs or retry a claimed audit after a crash', async () => {
+    const s = setup([raw()])
+    s.store.claim('table:new')
+    await Promise.all([s.poller.tick(), s.poller.tick()])
+    expect(s.api.list).toHaveBeenCalledTimes(1)
+    expect(s.evaluate).not.toHaveBeenCalled()
+    expect(s.log.mock.calls.some(([line]) => line.includes('INTERRUPTED_AUDIT_NOT_RETRIED'))).toBe(true)
+  })
+  it('skips unreadable and future creation times rather than calling them new tasks', async () => {
+    const s = setup([raw({ '填写时间（系统）': null }), raw({ '填写时间（系统）': t + 5000 }, 'future')])
+    await s.poller.tick()
+    expect(s.evaluate).not.toHaveBeenCalled()
+    expect(s.store.get('table:new')).toBeUndefined()
+    expect(s.store.get('table:future')).toBeUndefined()
+  })
+  it('rechecks ambiguous parent placeholders and preserves unresolved records', async () => {
+    const s = setup([raw({ 父记录: [{ table_id: 'table', text_arr: [] }] })])
+    await s.poller.tick()
+    expect(s.api.get).toHaveBeenCalledWith('new')
+    expect(s.store.get('table:new')?.result?.decision).toBe('MANUAL_REVIEW_REQUIRED')
+    expect(s.evaluate).not.toHaveBeenCalled()
+  })
+  it('supports explicit nested record_ids without treating placeholders as empty parents', () => {
+    expect(normalizeRecord(raw({ 父记录: [{ record_ids: ['parent'] }] })).parentRecordIds).toEqual(['parent'])
+    expect(normalizeRecord(raw({ 父记录: [{ record_ids: [] }] })).errors).not.toContain('INVALID_PARENT_CELL')
+    expect(normalizeRecord(raw({ 父记录: [{ text_arr: [] }] })).errors).toContain('INVALID_PARENT_CELL')
+  })
+  it('logs deterministic failures only as WOULD_DELETE', async () => {
+    const s = setup([raw({ 组别: ['机械'] })])
+    await s.poller.tick()
+    expect(s.store.get('table:new')?.result).toMatchObject({ decision: 'WOULD_DELETE', deleted: false, notificationStatus: 'LOG_ONLY' })
+    expect(s.evaluate).not.toHaveBeenCalled()
+  })
+})
+
+describe('REST field metadata adapter', () => {
+  it('preserves verified multiple, field types and parent table instead of inferring names', () => {
+    expect(restFields([
+      { field_name: '任务负责人', type: 11, property: { multiple: false } },
+      { field_name: '组别', type: 4, property: { options: [{ name: '机械' }] } },
+      { field_name: '填写时间（系统）', type: 1001 },
+      { field_name: '父记录', type: 18, property: { table_id: 'table' } },
+      { field_name: 'unknown', type: 9999 },
+    ])).toMatchObject([
+      { type: 'user', multiple: false }, { type: 'select', multiple: true },
+      { type: 'created_at' }, { type: 'link', link_table: 'table' }, { type: 'unknown' },
+    ])
+  })
+})

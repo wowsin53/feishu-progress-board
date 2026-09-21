@@ -36,9 +36,13 @@ export function normalizeRecord(raw: RawRecord): ReviewTask {
   const tags = cells[fields.tags], parent = cells[fields.parentRecordIds]
   let parentRecordIds: string[] = []
   if (parent != null) {
-    if (Array.isArray(parent) && parent.every(v => typeof v === 'string' || (v && typeof v.record_id === 'string'))) {
-      parentRecordIds = parent.map(v => typeof v === 'string' ? v : v.record_id)
-      if (parentRecordIds.some(v => !v)) errors.push('INVALID_PARENT_CELL')
+    if (Array.isArray(parent)) {
+      for (const value of parent) {
+        if (typeof value === 'string' && value) parentRecordIds.push(value)
+        else if (value && typeof value.record_id === 'string' && value.record_id) parentRecordIds.push(value.record_id)
+        else if (value && Array.isArray(value.record_ids) && value.record_ids.every((id: unknown) => typeof id === 'string' && id)) parentRecordIds.push(...value.record_ids)
+        else errors.push('INVALID_PARENT_CELL')
+      }
     } else errors.push('INVALID_PARENT_CELL')
   }
   if (tags != null && (!Array.isArray(tags) || !tags.every(v => typeof v === 'string'))) errors.push('INVALID_TAG_CELL')

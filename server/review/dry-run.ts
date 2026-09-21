@@ -2,13 +2,13 @@ import type { RawRecord } from './policy'
 import { fingerprint } from './policy'
 import { normalizeRecord } from './normalizer'
 import { validateSchema, type FieldMetadata } from './schema'
-import { validateTask, type CreationSnapshot } from './rules'
+import { validateTask, type CreationSnapshot, type FirstObservation } from './rules'
 import { findCandidates } from './candidates'
 import { aiInput, rejecting, uncertain, validateSemantic, type ReviewAiProvider, type SemanticResult } from './ai'
 import type { ReviewConfig } from './config'
-export interface AuditInput { record: RawRecord; records: RawRecord[]; complete: boolean; metadata: FieldMetadata[]; tableId: string; creation?: CreationSnapshot }
+export interface AuditInput { record: RawRecord; records: RawRecord[]; complete: boolean; metadata: FieldMetadata[]; tableId: string; creation?: CreationSnapshot; observation?: FirstObservation }
 export interface AuditResult {
-  recordId: string; taskText: string; taskType: 'main' | 'child'; reviewedAt: string
+  observation?: FirstObservation; recordId: string; taskText: string; taskType: 'main' | 'child' | 'unknown'; reviewedAt: string
   decision: 'SKIPPED_HISTORY' | 'PASS' | 'WOULD_DELETE' | 'MANUAL_REVIEW_REQUIRED' | 'SYSTEM_ERROR'
   deleted: false; wouldDelete: boolean; notificationStatus: 'LOG_ONLY'; errors: string[]
   task: ReturnType<typeof normalizeRecord>; basic: ReturnType<typeof validateTask> | null
@@ -40,8 +40,8 @@ export class DryRunReviewer {
     const cached = this.store.get(key)
     if (cached?.result) return cached.result
     const task = normalizeRecord(input.record), hash = fingerprint(input.record)
-    const out: AuditResult = { recordId: task.recordId, taskText: task.taskText, taskType: task.parentRecordIds.length ? 'child' : 'main',
-      reviewedAt: new Date().toISOString(), task, fingerprint: hash, threshold: this.config.rejectConfidence,
+    const out: AuditResult = { recordId: task.recordId, taskText: task.taskText, taskType: task.errors.includes('INVALID_PARENT_CELL') ? 'unknown' : task.parentRecordIds.length ? 'child' : 'main',
+      reviewedAt: new Date().toISOString(), observation: input.observation, task, fingerprint: hash, threshold: this.config.rejectConfidence,
       decision: 'SYSTEM_ERROR', deleted: false, wouldDelete: false, notificationStatus: 'LOG_ONLY', errors: [], basic: null, candidates: [], semantic: null }
     if (!this.store.claim(key, hash)) { out.errors.push('AUDIT_ALREADY_CLAIMED_MANUAL_CHECK'); return out }
     try {
@@ -51,7 +51,7 @@ export class DryRunReviewer {
       if (out.decision !== 'SKIPPED_HISTORY' && !out.errors.length) {
         const tasks = input.records.map(normalizeRecord), records = new Map(tasks.map(t => [t.recordId, t]))
         if (records.size !== tasks.length) out.errors.push('DUPLICATE_RECORD_IDS')
-        out.basic = validateTask(task, records, input.complete, input.creation)
+        out.basic = validateTask(task, records, input.complete, input.creation, input.observation)
         out.errors.push(...out.basic.errors)
         // An unreadable relationship could conceal children; never infer absence from a partial/invalid tree.
         if (tasks.some(t => t.errors.includes('INVALID_PARENT_CELL'))) out.errors.push('TREE_UNREADABLE')
@@ -77,7 +77,7 @@ export class DryRunReviewer {
             } else out.decision = 'PASS'
           }
         }
-        if (out.errors.length) out.decision = 'SYSTEM_ERROR'
+        if (out.errors.length) out.decision = out.errors.every(e => ['INITIAL_STATUS_UNVERIFIABLE', 'INVALID_PARENT_CELL', 'TREE_UNREADABLE', 'PARENT_UNREADABLE'].includes(e)) ? 'MANUAL_REVIEW_REQUIRED' : 'SYSTEM_ERROR'
         if (hasChildren && out.decision === 'MANUAL_REVIEW_REQUIRED') out.errors.push('LINKED_CHILDREN_PROTECTED')
       }
     } catch { out.decision = 'SYSTEM_ERROR'; out.errors.push('AUDIT_INTERNAL_ERROR') }

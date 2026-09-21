@@ -1,0 +1,25 @@
+[Unit]
+Description=GIRT Read-only Task Audit Poller
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+User=fs
+Group=fs
+WorkingDirectory=/opt/fs/current
+EnvironmentFile=/opt/fs/shared/.env
+EnvironmentFile=/opt/fs/shared/review-v2.env
+Environment=DRY_RUN=true
+Environment=REVIEW_V2_DB_PATH=/opt/fs/data/review-v2.sqlite
+ExecStart=/opt/fs/runtime/bin/node /opt/fs/current/dist-review-v2/server/review/poll-entry.js
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=150
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/fs/data /opt/fs/logs
+[Install]
+WantedBy=multi-user.target

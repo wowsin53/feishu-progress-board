@@ -9,7 +9,8 @@ export function parseTags(tags: string[]) {
 }
 /** Creation snapshot must come from a verified creation source; current read state is not an initial-state substitute. */
 export interface CreationSnapshot { recordId: string; createdAt: number; initialStatus: string }
-export function validateTask(task: ReviewTask, records: Map<string, ReviewTask>, complete: boolean, creation?: CreationSnapshot): RuleResult {
+export interface FirstObservation { source: 'poll_first_read'; recordId: string; createdAt: number; observedAt: number }
+export function validateTask(task: ReviewTask, records: Map<string, ReviewTask>, complete: boolean, creation?: CreationSnapshot, observation?: FirstObservation): RuleResult {
   const parsed = parseTags(task.tags)
   const result: RuleResult = { group: parsed.groups.length === 1 ? parsed.groups[0] : null,
     robotTypes: parsed.robotTypes, issues: [], errors: [...task.errors], dateIssues: [] }
@@ -20,7 +21,9 @@ export function validateTask(task: ReviewTask, records: Map<string, ReviewTask>,
   if (!task.executors.length) fail('EXECUTORS_EMPTY', '任务执行人至少填写一人')
   if (task.startDate === null) fail('START_EMPTY', '开始日期必须填写', true)
   if (!(statuses as readonly string[]).includes(task.status)) fail('STATUS_INVALID', '进展不是已确认的合法状态')
-  if (!creation || creation.recordId !== task.recordId || creation.createdAt !== task.createdAt) result.errors.push('CREATION_SNAPSHOT_REQUIRED')
+  if (observation?.source === 'poll_first_read' && observation.recordId === task.recordId && observation.createdAt === task.createdAt && observation.observedAt >= observation.createdAt) {
+    if (['已完成', '已放弃'].includes(task.status)) result.errors.push('INITIAL_STATUS_UNVERIFIABLE')
+  } else if (!creation || creation.recordId !== task.recordId || creation.createdAt !== task.createdAt) result.errors.push('CREATION_SNAPSHOT_REQUIRED')
   else if (['已完成', '已放弃'].includes(creation.initialStatus)) fail('INITIAL_STATUS_INVALID', '新建时不能直接选择已完成或已放弃')
   else if (!(statuses as readonly string[]).includes(creation.initialStatus)) fail('INITIAL_STATUS_INVALID', '创建时进展不合法')
   if (parsed.groups.length !== 1) fail('GROUP_COUNT', '必须且只能选择一个真正组别')
