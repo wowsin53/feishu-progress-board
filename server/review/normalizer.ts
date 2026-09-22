@@ -4,7 +4,7 @@ export interface Person { id: string; name?: string }
 export interface ReviewTask {
   recordId: string; taskText: string; owner: Person | null; executors: Person[]; submitter: Person | null
   tags: string[]; status: string; startDate: number | null; dueDate: number | null; createdAt: number | null
-  parentRecordIds: string[]; errors: string[]
+  priority?: string; parentRecordIds: string[]; errors: string[]
 }
 /** Input is the existing REST records API shape, not CLI-rendered cells. Missing cells mean empty only after schema validation. */
 export function normalizeRecord(raw: RawRecord): ReviewTask {
@@ -53,5 +53,5 @@ export function normalizeRecord(raw: RawRecord): ReviewTask {
     executors: people('executors'), submitter: submitters[0] ?? null,
     tags: Array.isArray(tags) && tags.every(v => typeof v === 'string') ? [...new Set(tags)] : [],
     status: text('status'), startDate: date('startDate'), dueDate: date('dueDate'), createdAt: date('createdAt'),
-    parentRecordIds, errors }
+    priority: text('priority'), parentRecordIds, errors }
 }

@@ -1,3 +1,7 @@
+import { suggestMerge } from './merge-suggestion'
+import { normalizeRecord } from './normalizer'
+import { missingRequired } from './readiness'
+import type { RawRecord } from './policy'
 import type { AuditResult } from './dry-run'
 import { assessClarity, clarityUncertain } from './clarity'
 import type { ReviewAiProvider } from './ai'
@@ -6,16 +10,20 @@ import { feedbackText } from './feedback'
 export interface MessageSender { send(recipient:string,text:string,uuid:string):Promise<string> }
 export class FeedbackWorker {
   constructor(private store:FeedbackStore,private provider:ReviewAiProvider,private sender:MessageSender,
-    private admin:string,private tableId:string,private base:string,private log:(line:string)=>void=console.log, private minConfidence=0.8) {}
-  async handle(audit:AuditResult) {
+    private admin:string,private tableId:string,private base:string,private log:(line:string)=>void=console.log, private minConfidence=0.8, private maxCandidates=20) {}
+  async handle(audit:AuditResult, records: RawRecord[] = []) {
+    if(missingRequired(audit.task).length)return
     if(audit.decision==='SKIPPED_HISTORY')return
-    const id=this.tableId+':'+audit.recordId
+    const id=this.tableId+':'+(audit.auditRevision?'filled:':'')+audit.recordId
     let result=this.store.result(id)
     if(!result) {
       if(this.store.claim(id)) {
         result=audit.errors.some(e=>e.startsWith('SCHEMA_') || e==='RECORD_FIELDS_UNREADABLE') ?
           clarityUncertain('数据结构异常，暂停内容判断，请人工检查。') : await assessClarity(audit.task,this.provider,this.minConfidence)
       } else result=clarityUncertain('上次内容判断中断，为避免重复请求已暂停，需人工检查。')
+      if(result.verdict==='CLEAR' && !audit.basic?.issues.length && !audit.errors.some(e => !['INVALID_PARENT_CELL','TREE_UNREADABLE','PARENT_UNREADABLE'].includes(e))) {
+        result={...result,merge:await suggestMerge(audit.task,records.map(normalizeRecord),this.provider,this.maxCandidates,this.minConfidence)}
+      }
       this.store.finish(id,result)
       this.log(JSON.stringify({event:'CONTENT_REVIEW',recordId:audit.recordId,...result}))
     }

@@ -14,7 +14,7 @@ import type { RawRecord } from '../server/review/policy'
 const t = Date.parse('2026-09-20T10:00:00+08:00')
 function raw(patch: Record<string, unknown> = {}, id = 'new'): RawRecord {
   return { record_id: id, fields: { 任务描述: '重装发射机构', 任务负责人: [{ id: 'ou_owner' }], 任务执行人: [{ id: 'ou_owner' }],
-    '填写人（系统）': { id: 'ou_creator' }, '填写时间（系统）': t, 开始日期: t, 进展: '待开始', 组别: ['机械', '重装'], ...patch } }
+    '填写人（系统）': { id: 'ou_creator' }, '填写时间（系统）': t, 开始日期: t, 进展: '待开始', 组别: ['机械', '重装'], 重要紧急程度:'重要紧急', ...patch } }
 }
 const parent = raw({ 任务描述: '重装模块化发射机构', 预计完成日期: t + 86400000 }, 'parent')
 const metadata: FieldMetadata[] = Object.entries(fields).map(([key, name]) => ({ name,
@@ -47,7 +47,6 @@ describe('confirmed deterministic rules', () => {
     [{ 组别: ['运营', '重装'], 任务描述: '宣传素材整理' }, 'TITLE_ROBOT_MISSING'],
     [{ 进展: '进行中' }, 'DUE_EMPTY'], [{ 进展: '已停滞' }, 'DUE_EMPTY'],
     [{ 进展: '已完成' }, 'INITIAL_STATUS_INVALID'], [{ 进展: '已放弃' }, 'INITIAL_STATUS_INVALID'],
-    [{ 父记录: ['parent'], 预计完成日期: t + 2 * 86400000 }, 'CHILD_DUE'],
     [{ 父记录: ['parent', 'other'] }, 'PARENT_COUNT'], [{ 父记录: ['new'] }, 'PARENT_SELF'],
     [{ 父记录: ['missing'] }, 'PARENT_MISSING'], [{ 开始日期: null }, 'START_EMPTY'],
     [{ 预计完成日期: t - 1 }, 'DATE_ORDER'], [{ 任务负责人: [] }, 'OWNER_EMPTY'],
@@ -205,7 +204,7 @@ describe('creation-time polling', () => {
     current.fields.进展 = '已完成'
     const restarted = new ReviewPoller(s.api, s.reviewer, s.store, 'table', t, s.log, () => t + 2000)
     await restarted.tick()
-    expect(s.evaluate).toHaveBeenCalledTimes(1)
+    expect(s.evaluate).not.toHaveBeenCalled()
     expect(s.store.get('table:new')?.result?.decision).toBe('PASS')
   })
   it.each(['已完成', '已放弃'])('keeps first-seen %s for manual review without guessing initial state', async status => {
@@ -251,6 +250,24 @@ describe('creation-time polling', () => {
     expect(normalizeRecord(raw({ 父记录: [{ record_ids: [] }] })).errors).not.toContain('INVALID_PARENT_CELL')
     expect(normalizeRecord(raw({ 父记录: [{ text_arr: [] }] })).errors).toContain('INVALID_PARENT_CELL')
   })
+
+  it.each(['任务描述','任务负责人','任务执行人','组别','进展','开始日期','重要紧急程度'])('waits for %s then audits exactly once when filled',async field=>{
+    const row=raw(), saved=row.fields[field];delete row.fields[field]
+    const s=setup([row]);await s.poller.tick()
+    expect(s.store.get('table:new')).toBeUndefined()
+    row.fields[field]=saved;await s.poller.tick();await s.poller.tick()
+    expect(s.store.get('table:new')?.state).toBe('done')
+    expect(s.log.mock.calls.filter(([line])=>line.includes('"fingerprint"')).length).toBe(1)
+  })
+  it('recovers a prematurely reviewed incomplete row once after all seven fields are filled',async()=>{
+    const row=raw({任务负责人:[]}),s=setup([row])
+    await s.reviewer.run({record:row,records:[row],complete:true,metadata,tableId:'table',creation:{recordId:'new',createdAt:t,initialStatus:'待开始'}})
+    row.fields.任务负责人=[{id:'ou_owner'}]
+    await s.poller.tick();await s.poller.tick()
+    expect(s.store.get('table:filled:new')?.result?.auditRevision).toBe('filled')
+    expect(s.store.get('table:new')?.result?.basic?.issues.some(x=>x.code==='OWNER_EMPTY')).toBe(true)
+  })
+
   it('logs deterministic failures only as WOULD_DELETE', async () => {
     const s = setup([raw({ 组别: ['机械'] })])
     await s.poller.tick()
@@ -272,4 +289,12 @@ describe('REST field metadata adapter', () => {
       { type: 'created_at' }, { type: 'link', link_table: 'table' }, { type: 'unknown' },
     ])
   })
+})
+
+describe('completed-fields date rules',()=>{
+ it.each([null, t-1, t+3*86400000, 'malformed'])('does not judge child deadline %j',due=>{
+  const r=rules({父记录:['parent'],进展:'进行中',预计完成日期:due})
+  expect(r.dateIssues).toEqual([])
+  expect(r.errors).not.toContain('INVALID_CELL:预计完成日期')
+ })
 })

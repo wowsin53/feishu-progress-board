@@ -24,10 +24,10 @@ async function main() {
   if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) throw new Error('AI_FEEDBACK_CONFIDENCE_INVALID')
   if (notify && !/^ou_[A-Za-z0-9]+$/.test(admin)) throw new Error('REVIEW_ADMIN_REQUIRED')
   const feedbackStore = notify ? new FeedbackStore(db) : undefined
-  const feedback = feedbackStore ? new FeedbackWorker(feedbackStore,new DeepSeekProvider(config),new FeishuReviewSender(),admin,table,base,console.log,confidence) : undefined
+  const feedback = feedbackStore ? new FeedbackWorker(feedbackStore,new DeepSeekProvider(config),new FeishuReviewSender(),admin,table,base,console.log,confidence,config.maxCandidates) : undefined
   // Only GET capabilities passed to poller. Legacy deletion worker remains disabled.
   const poller = new ReviewPoller({ list: () => api.list(), fields: () => api.fields(), get: id => api.get(id) },
-    new DryRunReviewer(config, new DeepSeekProvider(config), store), store, table, config.enabledAt, console.log, Date.now, feedback ? result => feedback.handle(result) : undefined)
+    new DryRunReviewer(config, new DeepSeekProvider(config), store), store, table, config.enabledAt, console.log, Date.now, feedback ? (result, records) => feedback.handle(result, records) : undefined)
   let stopped = false, timer: ReturnType<typeof setTimeout> | undefined, wake: (() => void) | undefined
   const stop = () => { stopped = true; if (timer) clearTimeout(timer); wake?.() }
   process.once('SIGTERM', stop); process.once('SIGINT', stop)
