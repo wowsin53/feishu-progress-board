@@ -30,7 +30,7 @@ export function validateTask(task: ReviewTask, records: Map<string, ReviewTask>,
   if (result.group === '运营') {
     if (parsed.robotTypes.length > 1) fail('OPERATIONS_ROBOT_COUNT', '运营最多选择一个兵种')
   } else if (result.group && !parsed.robotTypes.length) fail('ROBOT_EMPTY', '非运营任务必须选择至少一个兵种')
-  if (!task.parentRecordIds.length) {
+  if (!task.parentRecordIds.length && !task.errors.includes('INVALID_PARENT_CELL')) {
     const mentioned = robotTypes.filter(r => task.taskText.includes(r))
     if ((result.group !== '运营' || parsed.robotTypes.length > 0) && parsed.robotTypes.length && !mentioned.some(r => parsed.robotTypes.includes(r))) fail('TITLE_ROBOT_MISSING', '主任务描述须体现至少一个已选兵种')
     if (mentioned.some(r => !parsed.robotTypes.includes(r))) fail('TITLE_ROBOT_CONFLICT', '任务描述中的兵种与所选兵种冲突')

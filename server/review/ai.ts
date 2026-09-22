@@ -18,17 +18,17 @@ export const REVIEW_PROMPT = `你是GIRT任务语义审核员。仅负责语义�
 只输出一个JSON对象，必须含relation、targetRecordId、targetTaskText、reason、confidence五项。confidence是0到1的数字。
 INDEPENDENT、CHILD_VALID、UNCERTAIN的目标字段为null；其余目标必须可验证。reason用中文具体解释判断证据。
 示例：{"relation":"INDEPENDENT","targetRecordId":null,"targetTaskText":null,"reason":"工作对象分别为发射机构与底盘，范围独立","confidence":0.95}`
-export interface ReviewAiProvider { evaluate(input: string): Promise<unknown> }
+export interface ReviewAiProvider { evaluate(input: string, systemPrompt?: string): Promise<unknown> }
 export class DeepSeekProvider implements ReviewAiProvider {
   constructor(private config: ReviewConfig, private http: Pick<typeof axios, 'post'> = axios, private sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))) {}
-  async evaluate(input: string): Promise<unknown> {
+  async evaluate(input: string, systemPrompt = REVIEW_PROMPT): Promise<unknown> {
     const c = this.config
     if (!c.apiKey || !c.baseUrl || !c.model) throw new Error('AI_NOT_CONFIGURED')
     for (let attempt = 0; attempt <= c.maxRetries; attempt++) {
       try {
         const { data } = await this.http.post(c.baseUrl.replace(/\/$/, '') + '/chat/completions', {
           model: c.model, stream: false, response_format: { type: 'json_object' },
-          messages: [{ role: 'system', content: REVIEW_PROMPT }, { role: 'user', content: input }],
+          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: input }],
         }, { headers: { Authorization: `Bearer ${c.apiKey}` }, timeout: c.timeoutMs, maxRedirects: 0, maxContentLength: 1024 * 1024 })
         const choice = data?.choices?.[0]
         if (choice?.finish_reason !== 'stop' || typeof choice?.message?.content !== 'string') throw new Error('AI_INVALID_RESPONSE')

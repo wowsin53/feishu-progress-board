@@ -1,3 +1,6 @@
+import { FeedbackStore } from './feedback-store'
+import { FeedbackWorker } from './feedback-worker'
+import { FeishuReviewSender } from './message-sender'
 import 'dotenv/config'
 import { reviewConfig } from './config'
 import { ReviewApi } from './feishu'
@@ -15,18 +18,26 @@ async function main() {
   if (!Number.isInteger(interval) || interval < 5000 || interval > 300000) throw new Error('REVIEW_POLL_INTERVAL_INVALID')
   const store = new SqliteAuditStore(db)
   const api = new ReviewApi(base, table)
+  const notify = process.env.REVIEW_NOTIFY_ENABLED === 'true'
+  const admin = process.env.REVIEW_ADMIN_OPEN_ID ?? ''
+  const confidence = Number(process.env.AI_FEEDBACK_CONFIDENCE || 0.8)
+  if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) throw new Error('AI_FEEDBACK_CONFIDENCE_INVALID')
+  if (notify && !/^ou_[A-Za-z0-9]+$/.test(admin)) throw new Error('REVIEW_ADMIN_REQUIRED')
+  const feedbackStore = notify ? new FeedbackStore(db) : undefined
+  const feedback = feedbackStore ? new FeedbackWorker(feedbackStore,new DeepSeekProvider(config),new FeishuReviewSender(),admin,table,base,console.log,confidence) : undefined
   // Only GET capabilities passed to poller. Legacy deletion worker remains disabled.
   const poller = new ReviewPoller({ list: () => api.list(), fields: () => api.fields(), get: id => api.get(id) },
-    new DryRunReviewer(config, new DeepSeekProvider(config), store), store, table, config.enabledAt)
+    new DryRunReviewer(config, new DeepSeekProvider(config), store), store, table, config.enabledAt, console.log, Date.now, feedback ? result => feedback.handle(result) : undefined)
   let stopped = false, timer: ReturnType<typeof setTimeout> | undefined, wake: (() => void) | undefined
   const stop = () => { stopped = true; if (timer) clearTimeout(timer); wake?.() }
   process.once('SIGTERM', stop); process.once('SIGINT', stop)
-  console.log(JSON.stringify({ event: 'REVIEW_POLL_STARTED', dryRun: true, source: 'system_created_at', enabledAt: new Date(config.enabledAt).toISOString(), intervalMs: interval }))
+  console.log(JSON.stringify({ event: 'REVIEW_POLL_STARTED', dryRun: true, notifyEnabled: notify, source: 'system_created_at', enabledAt: new Date(config.enabledAt).toISOString(), intervalMs: interval }))
   try {
     while (!stopped) {
       await poller.tick()
+      await feedback?.flush()
       if (!stopped) await new Promise<void>(resolve => { wake = resolve; timer = setTimeout(resolve, interval) })
     }
-  } finally { store.close(); process.removeListener('SIGTERM', stop); process.removeListener('SIGINT', stop) }
+  } finally { feedbackStore?.close(); store.close(); process.removeListener('SIGTERM', stop); process.removeListener('SIGINT', stop) }
 }
 main().catch(() => { console.error('REVIEW_POLL_START_FAILED: check required server configuration'); process.exitCode = 1 })
