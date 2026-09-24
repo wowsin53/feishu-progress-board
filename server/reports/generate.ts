@@ -46,6 +46,7 @@ export function generateDailyReport(data:DashboardData, now=Date.now()) {
       ...(data.incompleteTasks?.length ? ['待补充信息：'+data.incompleteTasks.length+' 条，未计入任务统计；请完善负责人或状态。'] : []),
       '今日重点：'+missingDeadlines.length+' 项任务未填写截止日期，'+view.overdue.length+' 项已逾期，'+view.upcoming.length+' 项将在48小时内到期，请对应负责人及时处理。',
       '', '📊 查看完整任务看板：http://47.93.156.196/',
+      '📝 主任务填写：https://girtrobotlab.feishu.cn/share/base/shrcndaRaDyprWeJ1UJ8cJjrxgg',
     ].join('\n')
   }
   // One message keeps a daily send atomic. Bound details by UTF-8 bytes, not characters.
